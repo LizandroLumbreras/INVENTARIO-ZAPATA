@@ -88,53 +88,53 @@
     };
 
     async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
-      const productos = {};
-      productosSnap.forEach(doc => {
-        if (codigos.includes(doc.id)) {
-          productos[doc.id] = {
-            descripcion: doc.data().Concepto || "Sin descripción",
-            entradas: 0,
-            salidas: 0
-          };
-        }
-      });
-
-      entradasSnap.forEach(doc => {
-        const d = doc.data();
-        if (productos[d.codigo]) productos[d.codigo].entradas += d.cantidad;
-      });
-      salidasSnap.forEach(doc => {
-        const d = doc.data();
-        if (productos[d.codigo]) productos[d.codigo].salidas += d.cantidad;
-      });
-
-      const filas = Object.entries(productos).filter(([_, p]) => {
-        const movimiento = p.entradas !== 0 || p.salidas !== 0;
-        return !mostrarSoloConMovimiento || movimiento;
-      });
-
-      if (filas.length === 0) return;
-
-      let tablaHTML = `<h3>${nombre}</h3>`;
-      tablaHTML += `<table><thead><tr>
-        <th>Código</th>
-        <th>Descripción</th>
-        <th>Inventario</th>
-      </tr></thead><tbody>`;
-
-      filas.forEach(([codigo, p]) => {
-        const inventario = p.entradas - p.salidas;
-        tablaHTML += `<tr>
-          <td>${codigo}</td>
-          <td>${p.descripcion}</td>
-          <td><strong>${inventario}</strong></td>
-        </tr>`;
-      });
-
-      tablaHTML += "</tbody></table>";
-      document.getElementById("tablas").innerHTML += tablaHTML;
+  const productos = {};
+  productosSnap.forEach(doc => {
+    if (codigos.includes(doc.id)) {
+      productos[doc.id] = {
+        descripcion: doc.data().Concepto || "Sin descripción",
+        entradas: 0,
+        salidas: 0
+      };
     }
+  });
 
+  entradasSnap.forEach(doc => {
+    const d = doc.data();
+    if (productos[d.codigo]) productos[d.codigo].entradas += d.cantidad;
+  });
+
+  salidasSnap.forEach(doc => {
+    const d = doc.data();
+    if (productos[d.codigo]) productos[d.codigo].salidas += d.cantidad;
+  });
+
+  const filas = Object.entries(productos).filter(([_, p]) => {
+    const movimiento = p.entradas !== 0 || p.salidas !== 0;
+    return !mostrarSoloConMovimiento || movimiento;
+  });
+
+  if (filas.length === 0) return;
+
+  let tablaHTML = `<h3>${nombre}</h3>`;
+  tablaHTML += `<table><thead><tr>
+    <th>Código</th>
+    <th>Descripción</th>
+    <th>Inventario</th>
+  </tr></thead><tbody>`;
+
+  filas.forEach(([codigo, p]) => {
+    const inventario = p.entradas - p.salidas;
+    tablaHTML += `<tr>
+      <td>${codigo}</td>
+      <td>${p.descripcion}</td>
+      <td><strong>${inventario}</strong></td>
+    </tr>`;
+  });
+
+  tablaHTML += "</tbody></table>";
+  document.getElementById("tablas").innerHTML += tablaHTML;
+}
     async function cargarDatos() {
       const entradasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("entradas").get();
       const salidasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("salidas").get();
