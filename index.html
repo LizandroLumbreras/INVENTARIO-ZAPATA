@@ -138,6 +138,10 @@
     async function cargarDatos() {
       const entradasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("entradas").get();
       const salidasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("salidas").get();
+     
+      console.log("Entradas:", entradasSnap.docs.map(doc => doc.data()));
+      console.log("Salidas:", salidasSnap.docs.map(doc => doc.data()));
+      
       const productosSnap = await db.collection("productos").get();
 
       const usados = new Set();
