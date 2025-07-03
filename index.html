@@ -67,10 +67,6 @@
     z-index: 999;
   ">🖨️ Imprimir</button>
 
-  <h3 id="totalGlobal" style="color:#0d47a1; text-align:left; margin-left:20px;">
-    💰 TOTAL INVENTARIO ZAPATA: $0.00
-  </h3>
-
   <div id="tablas"></div>
 
 <script>
@@ -97,42 +93,12 @@ const lineas = {
 const codigosExentos = ["2382", "3062", "3217", "210004", "7503000134506", "7503000134803"];
 let totalGlobalInventario = 0;
 
-async function cargarDatos() {
-  const entradasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("entradas").get();
-  const salidasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("salidas").get();
-  const productosSnap = await db.collection("productos").get();
-
-  const usados = new Set();
-  entradasSnap.forEach(doc => usados.add(doc.data().codigo));
-  salidasSnap.forEach(doc => usados.add(doc.data().codigo));
-
-  const codigosTodasLineas = Object.values(lineas).flat();
-  const sinCategoria = [];
-  for (const codigo of usados) {
-    if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
-  }
-
-  for (const [linea, codigos] of Object.entries(lineas)) {
-    await renderTabla(linea, codigos, productosSnap, entradasSnap, salidasSnap);
-  }
-  if (sinCategoria.length > 0) {
-    await renderTabla("SIN CATEGORÍA", sinCategoria, productosSnap, entradasSnap, salidasSnap, true);
-  }
-
-  document.getElementById("loader").style.display = "none";
-}
-
 async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
   const productos = {};
   productosSnap.forEach(doc => {
     if (codigos.includes(doc.id)) {
-      const base = doc.data()["Costo sin Impuesto"] || 0;
-      const esExento = codigosExentos.includes(doc.id);
-      const costoFinal = esExento ? base : base * 1.16;
       productos[doc.id] = {
         descripcion: doc.data().Concepto || "Sin descripción",
-        impuesto: esExento ? "Exento" : "Con IVA",
-        costo: costoFinal,
         entradas: 0,
         salidas: 0
       };
@@ -155,42 +121,25 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
 
   if (filas.length === 0) return;
 
-  const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-  let totalInventarioCosteado = 0;
-
   let tablaHTML = `<h3>${nombre}</h3>`;
-tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(totalInventarioCosteado)}</p>`;
-tablaHTML += `<table><thead><tr>
-  <th>Código</th>
-  <th>Descripción</th>
-  <th>Costo</th>
-  <th>Impuesto</th>
-  <th>Inventario</th>
-  <th>Inventario Costeado</th>
-</tr></thead><tbody>`;
+  tablaHTML += `<table><thead><tr>
+    <th>Código</th>
+    <th>Descripción</th>
+    <th>Inventario</th>
+  </tr></thead><tbody>`;
 
   filas.forEach(([codigo, p]) => {
     const inventario = p.entradas - p.salidas;
-    const totalCosteado = p.costo * inventario;
-    totalInventarioCosteado += totalCosteado;
-    totalGlobalInventario += totalCosteado;
     tablaHTML += `<tr>
       <td>${codigo}</td>
       <td>${p.descripcion}</td>
-      <td>${formatter.format(p.costo)}</td>
-      <td>${p.impuesto}</td>
       <td><strong>${inventario}</strong></td>
-      <td><strong>${formatter.format(totalCosteado)}</strong></td>
     </tr>`;
   });
 
   tablaHTML += "</tbody></table>";
-
   document.getElementById("tablas").innerHTML += tablaHTML;
-  document.getElementById("totalGlobal").innerText =
-    "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
 }
-
 window.onload = cargarDatos;
 </script>
 </body>
