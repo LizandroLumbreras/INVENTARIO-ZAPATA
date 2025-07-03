@@ -140,6 +140,30 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   tablaHTML += "</tbody></table>";
   document.getElementById("tablas").innerHTML += tablaHTML;
 }
+  async function cargarDatos() {
+  const entradasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("entradas").get();
+  const salidasSnap = await db.collection("almacenes").doc("Almacen_Zapata").collection("salidas").get();
+  const productosSnap = await db.collection("productos").get();
+
+  const usados = new Set();
+  entradasSnap.forEach(doc => usados.add(doc.data().codigo));
+  salidasSnap.forEach(doc => usados.add(doc.data().codigo));
+
+  const codigosTodasLineas = Object.values(lineas).flat();
+  const sinCategoria = [];
+  for (const codigo of usados) {
+    if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
+  }
+
+  for (const [linea, codigos] of Object.entries(lineas)) {
+    await renderTabla(linea, codigos, productosSnap, entradasSnap, salidasSnap);
+  }
+  if (sinCategoria.length > 0) {
+    await renderTabla("SIN CATEGORÍA", sinCategoria, productosSnap, entradasSnap, salidasSnap, true);
+  }
+
+  document.getElementById("loader").style.display = "none";
+}
 window.onload = cargarDatos;
 </script>
 </body>
