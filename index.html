@@ -151,16 +151,16 @@ td:nth-child(6),
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
 
-  let tablaHTML = <h3>${nombre}</h3>;
-  tablaHTML += <p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>;
-  tablaHTML += `<table><thead><tr>
-    <th>Código</th>
-    <th>Descripción</th>
-    <th>Costo</th>
-    <th>Impuesto</th>
-    <th>Inventario</th>
-    <th>Inventario Costeado</th>
-  </tr></thead><tbody>`;
+  let tablaHTML = `<h3>${nombre}</h3>`;
+tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(totalInventarioCosteado)}</p>`;
+tablaHTML += `<table><thead><tr>
+  <th>Código</th>
+  <th>Descripción</th>
+  <th>Costo</th>
+  <th>Impuesto</th>
+  <th>Inventario</th>
+  <th>Inventario Costeado</th>
+</tr></thead><tbody>`;
 
   filas.forEach(([codigo, p]) => {
     const inventario = p.entradas - p.salidas;
@@ -177,10 +177,6 @@ td:nth-child(6),
     </tr>`;
   });
 
-  tablaHTML = tablaHTML.replace(
-    ${formatter.format(0)},
-    formatter.format(totalInventarioCosteado)
-  );
   tablaHTML += "</tbody></table>";
 
   document.getElementById("tablas").innerHTML += tablaHTML;
