@@ -19,7 +19,15 @@
       border-radius:50%; animation:spin 1s linear infinite;
     }
     @keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }
-
+     th:nth-child(3),
+th:nth-child(4),
+th:nth-child(6),
+td:nth-child(3),
+td:nth-child(4),
+td:nth-child(6),
+#totalGlobal {
+  display: none !important;
+}
     @media print {
       body { background: white; color: black; }
       button, #loader { display: none !important; }
@@ -121,15 +129,6 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
         salidas: 0
       };
     }
-    th:nth-child(3),
-th:nth-child(4),
-th:nth-child(6),
-td:nth-child(3),
-td:nth-child(4),
-td:nth-child(6),
-#totalGlobal {
-  display: none !important;
-}
   });
 
   entradasSnap.forEach(doc => {
