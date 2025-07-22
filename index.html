@@ -196,9 +196,9 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     }
   });
 
-  const filas = Object.entries(productos).filter(([codigo, p]) => {
-    const movimiento = p.entradas !== 0 || p.salidas !== 0;
-    return !mostrarSoloConMovimiento || movimiento;
+ let filas = codigos
+  .map(codigo => [codigo, productos[codigo]])
+  .filter(([codigo, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
   });
 
   if (filas.length === 0) return;
