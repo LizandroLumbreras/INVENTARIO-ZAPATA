@@ -160,9 +160,12 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   const productos = {};
   productosSnap.forEach(doc => {
     if (codigos.includes(doc.id)) {
-      const base = doc.data()["Costo sin Impuesto"] || 0;
-      const esExento = codigosExentos.includes(doc.id);
-      const costoFinal = esExento ? base : base * 1.16;
+     const base = doc.data()["Costo sin Impuesto"] || 0;
+const esExento = codigosExentos.includes(doc.id);
+let costoFinal = esExento ? base : base * 1.16;
+if (nombre === "BOLSA") {
+  costoFinal *= 25;
+}
       productos[doc.id] = {
         descripcion: doc.data().Concepto || "Sin descripción",
         impuesto: esExento ? "Exento" : "Con IVA",
