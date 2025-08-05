@@ -201,37 +201,39 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
 
-  let tablaHTML = <h3>${nombre}</h3>;
-  tablaHTML += <p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>;
-  tablaHTML += <table><thead><tr>
-    <th>Código</th>
-    <th>Descripción</th>
-    <th>Costo</th>
-    <th>Impuesto</th>
-    <th>Inventario</th>
-    <th>Inventario Costeado</th>
-  </tr></thead><tbody>;
+ let tablaHTML = `<h3>${nombre}</h3>`;
+tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
+tablaHTML += `<table><thead><tr>
+  <th>Código</th>
+  <th>Descripción</th>
+  <th>Costo</th>
+  <th>Impuesto</th>
+  <th>Inventario</th>
+  <th>Inventario Costeado</th>
+</tr></thead><tbody>`;
+
 
   filas.forEach(([codigo, p]) => {
     const inventario = p.entradas - p.salidas;
-    const totalCosteado = p.costo * inventario;
+   const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
     totalInventarioCosteado += totalCosteado;
     totalGlobalInventario += totalCosteado;
     const claseFila = inventario < 0 ? 'fila-parpadeo-rojo' : '';
-    tablaHTML += <tr class="${claseFila}">
+    tablaHTML += `<tr class="${claseFila}">
       <td>${codigo}</td>
       <td>${p.descripcion}</td>
       <td>${formatter.format(p.costo)}</td>
       <td>${p.impuesto}</td>
       <td><strong>${inventario}</strong></td>
       <td><strong>${formatter.format(totalCosteado)}</strong></td>
-    </tr>;
+    </tr>`;
   });
 
   tablaHTML = tablaHTML.replace(
-    ${formatter.format(0)},
+    formatter.format(0),
     formatter.format(totalInventarioCosteado)
   );
+
   tablaHTML += "</tbody></table>";
 
   document.getElementById("tablas").innerHTML += tablaHTML;
