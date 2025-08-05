@@ -160,10 +160,9 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   const productos = {};
   productosSnap.forEach(doc => {
     if (codigos.includes(doc.id)) {
-     const base = doc.data()["Costo sin Impuesto"] || 0;
-const esExento = codigosExentos.includes(doc.id);
-let costoFinal = esExento ? base : base * 1.16;
-const totalCosteado = p.costo * inventario;
+      const base = doc.data()["Costo sin Impuesto"] || 0;
+      const esExento = codigosExentos.includes(doc.id);
+      const costoFinal = esExento ? base : base * 1.16;
       productos[doc.id] = {
         descripcion: doc.data().Concepto || "Sin descripción",
         impuesto: esExento ? "Exento" : "Con IVA",
@@ -202,7 +201,7 @@ const totalCosteado = p.costo * inventario;
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
 
-  let tablaHTML = `<h3>${nombre}</h3>`;
+ let tablaHTML = `<h3>${nombre}</h3>`;
 tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
 tablaHTML += `<table><thead><tr>
   <th>Código</th>
@@ -214,27 +213,26 @@ tablaHTML += `<table><thead><tr>
 </tr></thead><tbody>`;
 
   filas.forEach(([codigo, p]) => {
-  const inventario = p.entradas - p.salidas;
-  let totalCosteado = p.costo * inventario;
-  if (nombre === "BOLSA") {
-    totalCosteado *= 25;
-  }
-  totalInventarioCosteado += totalCosteado;
-  totalGlobalInventario += totalCosteado;
-  const claseFila = inventario < 0 ? 'fila-parpadeo-rojo' : '';
-  tablaHTML += `<tr class="${claseFila}">
-    <td>${codigo}</td>
-    <td>${p.descripcion}</td>
-    <td>${formatter.format(p.costo)}</td>
-    <td>${p.impuesto}</td>
-    <td><strong>${inventario}</strong></td>
-    <td><strong>${formatter.format(totalCosteado)}</strong></td>
-  </tr>`;
-});
-
+    const inventario = p.entradas - p.salidas;
+    let totalCosteado = p.costo * inventario;
+if (nombre === "BOLSA") {
+  totalCosteado *= 25;
+}
+    totalInventarioCosteado += totalCosteado;
+    totalGlobalInventario += totalCosteado;
+    const claseFila = inventario < 0 ? 'fila-parpadeo-rojo' : '';
+    tablaHTML += <tr class="${claseFila}">
+      <td>${codigo}</td>
+      <td>${p.descripcion}</td>
+      <td>${formatter.format(p.costo)}</td>
+      <td>${p.impuesto}</td>
+      <td><strong>${inventario}</strong></td>
+      <td><strong>${formatter.format(totalCosteado)}</strong></td>
+    </tr>;
+  });
 
   tablaHTML = tablaHTML.replace(
-    `${formatter.format(0)}`,
+    ${formatter.format(0)},
     formatter.format(totalInventarioCosteado)
   );
   tablaHTML += "</tbody></table>";
