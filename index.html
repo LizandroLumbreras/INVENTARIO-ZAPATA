@@ -270,6 +270,7 @@ window.onload = cargarDatos;
 <button onclick="revisarInventario()">🔍 Revisar inventario ZAPATA</button>
 <script>
 <script>
+<script>
   async function revisarInventario() {
     const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
     const salidasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
