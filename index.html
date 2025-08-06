@@ -269,25 +269,42 @@ window.onload = cargarDatos;
 <!-- Botón para revisión manual -->
 <button onclick="revisarInventario()">🔍 Revisar inventario ZAPATA</button>
 <script>
+<script>
   async function revisarInventario() {
-    const inventarioRef = db.collection("inventario");
-    const snapshot = await inventarioRef.where("ubicacion", "==", "ZAPATA").get();
+    const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
+    const salidasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
 
-    if (snapshot.empty) {
-      alert("No hay datos de inventario para ZAPATA.");
-      return;
-    }
+    const inventario = {};
+
+    // Cargar entradas
+    entradasSnap.forEach(doc => {
+      const data = doc.data();
+      const codigo = String(data.codigo).trim();
+      const cantidad = data.cantidad || 0;
+      if (!inventario[codigo]) inventario[codigo] = 0;
+      inventario[codigo] += cantidad;
+    });
+
+    // Cargar salidas
+    salidasSnap.forEach(doc => {
+      const data = doc.data();
+      if (Array.isArray(data.articulos)) {
+        data.articulos.forEach(item => {
+          const codigo = String(item.codigo).trim();
+          const cantidad = item.cantidad || 0;
+          if (!inventario[codigo]) inventario[codigo] = 0;
+          inventario[codigo] -= cantidad;
+        });
+      }
+    });
 
     let mensaje = "📦 Alerta de SKUs en ZAPATA:\n";
     let hayAlertas = false;
 
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const sku = String(data.sku); // Asegura que sea string
-      const existencia = data.existencia ?? 0;
-
-      if (skusClave.includes(sku) && existencia <= 0) {
-        mensaje += `🔴 SKU ${sku} en negativo o cero (${existencia})\n`;
+    skusClave.forEach(codigo => {
+      const existencia = inventario[codigo] || 0;
+      if (existencia <= 0) {
+        mensaje += `🔴 SKU ${codigo} en negativo o cero (${existencia})\n`;
         hayAlertas = true;
       }
     });
