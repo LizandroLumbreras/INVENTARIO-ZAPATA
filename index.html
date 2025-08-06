@@ -264,5 +264,48 @@ window.onload = cargarDatos;
       "120120", "5283", "5282"
   ];
 </script>
+<!-- Botón para revisión manual -->
+<button onclick="revisarInventario()">🔍 Revisar inventario ZAPATA</button>
+
+<script>
+  async function revisarInventario() {
+    const inventarioRef = db.collection("inventario"); // Cambia si tu colección tiene otro nombre
+    const snapshot = await inventarioRef.where("ubicacion", "==", "ZAPATA").get();
+
+    if (snapshot.empty) {
+      alert("No hay datos de inventario para ZAPATA.");
+      return;
+    }
+
+    let mensaje = "📦 Alerta de SKUs en ZAPATA:\n";
+    let hayAlertas = false;
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const sku = String(data.sku); // Asegura que sea string
+      const existencia = data.existencia ?? 0;
+
+      if (skusClave.includes(sku) && existencia <= 0) {
+        mensaje += `🔴 SKU ${sku} en negativo o cero (${existencia})\n`;
+        hayAlertas = true;
+      }
+    });
+
+    if (hayAlertas) {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: mensaje
+        })
+      });
+      alert("🚨 Notificación enviada a LobaZapata.");
+    } else {
+      alert("✅ Todos los SKUs están bien en ZAPATA.");
+    }
+  }
+</script>
+
 </body>
 </html>
