@@ -1,311 +1,311 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Inventario General Zapata</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f2f5; }
-    h1, h2, h3 { color: #0d47a1; text-align: center; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
-    th { background: #0d47a1; color: white; }
-    #loader { text-align: center; padding: 20px; }
-    .spinner {
-      margin:auto; width:40px; height:40px;
-      border:4px solid #ccc; border-top:4px solid #0d47a1;
-      border-radius:50%; animation:spin 1s linear infinite;
-    }
-    @keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }
-
-    @media print {
-      body { background: white; color: black; }
-      button, #loader { display: none !important; }
-      h2, h3 { color: black !important; }
-      table { page-break-inside: avoid; }
-      table, th, td { font-size: 11pt; }
-      th { background: #e0e0e0 !important; color: black !important; }
-      h2::before { content: "🧾 Inventario Impreso — "; }
-    }
-.fila-parpadeo-rojo {
-  animation: parpadeoFila 1s infinite;
-  background-color: #ffcccc;
-}
-
-@keyframes parpadeoFila {
-  0%, 100% { background-color: #ffcccc; }
-  50% { background-color: white; }
-}
-
-    
-  </style>
-</head>
-<body>
-  <div id="loader">
-    <div class="spinner"></div>
-    <p>Cargando inventario...</p>
-  </div>
-  <h1>INVENTARIO GENERAL ZAPATA</h1>
-  <h2>📦 Inventario (con movimiento)</h2>
-  <button onclick="window.print()" style="
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #0d47a1;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
-    cursor: pointer;
-    z-index: 999;
-  ">🖨️ Imprimir</button>
-
-  <h3 id="totalGlobal" style="color:#0d47a1; text-align:left; margin-left:20px;">
-    💰 TOTAL INVENTARIO ZAPATA: $0.00
-  </h3>
-
-  <div id="tablas"></div>
-
-<script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCK5nb6u2CGRJ8AB1aPlRn54b97bdeAFeM",
-  authDomain: "inventariopv-643f1.firebaseapp.com",
-  projectId: "inventariopv-643f1",
-  storageBucket: "inventariopv-643f1.appspot.com",
-  messagingSenderId: "96242533231",
-  appId: "1:96242533231:web:aae75a18fbaf9840529e9a"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
-const lineas = {
-  "REYMA": [
-  "365", "355", "357", "364", "363", "7037", "2178", "14578", "7016", "7221",
-  "7689", "7686", "2096", "1886", "2097", "1655", "1901", "7417", "352", "12146",
-  "2409", "2410", "020013", "2411", "2188", "2408", "2190", "3987","3988", "3614",
-  "1347", "020124", "020126", "020127", "020003","055500500", "2351", "1349", "055500500",
-  "2350", "450029", "3864", "3866", "3865", "3738", "14579",
-  "020270", "450065", "750178", "750175", "750182",
-  "020167", "020262", "2397", "2395", "2162", "5853", "4410", "5078", "1502",
-  "1623", "4395", "1386413864", "020066", "5666", "450083", "020133",
-  "020073", "7562", "450006", "7560", "450010", "450007", "7011", "020339",
-  "450008", "7013", "450091", "450090", "141450", "450086", "450087",
-  "450101", "450095", "32322050", "450079", "450081", "020319", "020318",
-  "020297", "020306", "020303", "020300", "020312", "020310", "450089",
-  "450100"
-],
- "BIO PLAST": [
-  "7701200", "7702200", "8802200", "8801200", "9902200", "9901200"
-],
- "JAGUAR": [
-  "020051", "020054", "2033", "2164", "020053", "1484", "2161", "1639", "2162", "020052", "020055", "1356", "1355", "290005", "020052", "1409",
-  "1486", "1485", "450053", "450002"
-],
-"BIGCOLA Y AGUA": [
-  "060028", "4451", "250010", "7506241", "210010", "7503033", "7504033", "7505033", "14220", "210004", "3062", "2382", "3217", "060007", "7503000134803", "7503000134506"
-],
-  "CONVERMEX": [
-  "104104", "106106", "108108", "110110", "112112", "114114", "116116", "132132",
-  "704704", "706706", "708708", "712712", "716716", "732732", "760760",
-  "404404", "406406", "408408", "410410", "412412", "414414", "416416",
-  "516516", "120120", "7501431206038", "7501825638728", "7501825638742",
-  "020103", "5283", "5282"
-],
-"BOLSA": [ "4660","7702","13609","131825","132030","134060","142535","142540","144060","145070","147090","150100","150101","150102","150103","150104","7501508800237","7503009154239","7503009154307","7503020773860","7503024644128","7503024644951" ],
-};
-const codigosExentos = ["2382", "3062", "3217", "210004", "7503000134506", "7503000134803"];
-let totalGlobalInventario = 0;
-
-async function cargarDatos() {
-  const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
-  const salidasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
-  const productosSnap = await db.collection("productos").get();
-
-  const usados = new Set();
-
-  entradasSnap.forEach(doc => {
-    const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => usados.add(item.codigo));
-    }
-  });
-
-  salidasSnap.forEach(doc => {
-    const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => usados.add(item.codigo));
-    }
-  });
-
-  const codigosTodasLineas = Object.values(lineas).flat();
-  const sinCategoria = [];
-  for (const codigo of usados) {
-    if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
+  <!DOCTYPE html>
+  <html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Inventario General Zapata</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; background: #f0f2f5; }
+      h1, h2, h3 { color: #0d47a1; text-align: center; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
+      th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+      th { background: #0d47a1; color: white; }
+      #loader { text-align: center; padding: 20px; }
+      .spinner {
+        margin:auto; width:40px; height:40px;
+        border:4px solid #ccc; border-top:4px solid #0d47a1;
+        border-radius:50%; animation:spin 1s linear infinite;
+      }
+      @keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }
+  
+      @media print {
+        body { background: white; color: black; }
+        button, #loader { display: none !important; }
+        h2, h3 { color: black !important; }
+        table { page-break-inside: avoid; }
+        table, th, td { font-size: 11pt; }
+        th { background: #e0e0e0 !important; color: black !important; }
+        h2::before { content: "🧾 Inventario Impreso — "; }
+      }
+  .fila-parpadeo-rojo {
+    animation: parpadeoFila 1s infinite;
+    background-color: #ffcccc;
   }
-
-  for (const [linea, codigos] of Object.entries(lineas)) {
-    await renderTabla(linea, codigos, productosSnap, entradasSnap, salidasSnap);
+  
+  @keyframes parpadeoFila {
+    0%, 100% { background-color: #ffcccc; }
+    50% { background-color: white; }
   }
-
-  if (sinCategoria.length > 0) {
-    await renderTabla("SIN CATEGORÍA", sinCategoria, productosSnap, entradasSnap, salidasSnap, true);
-  }
-
-  document.getElementById("loader").style.display = "none";
-}
-
-async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
-  const productos = {};
-  productosSnap.forEach(doc => {
-    if (codigos.includes(doc.id)) {
-      const base = doc.data()["Costo sin Impuesto"] || 0;
-      const esExento = codigosExentos.includes(doc.id);
-      const costoFinal = esExento ? base : base * 1.16;
-      productos[doc.id] = {
-        descripcion: doc.data().Concepto || "Sin descripción",
-        impuesto: esExento ? "Exento" : "Con IVA",
-        costo: costoFinal,
-        entradas: 0,
-        salidas: 0
-      };
-    }
-  });
-
- entradasSnap.forEach(doc => {
-  const data = doc.data();
-  const codigo = data.codigo;
-  const cantidad = data.cantidad || 0;
-  if (productos[codigo]) {
-    productos[codigo].entradas += cantidad;
-  }
-});
-
-  salidasSnap.forEach(doc => {
-    const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => {
-        if (productos[item.codigo]) {
-          productos[item.codigo].salidas += item.cantidad;
-        }
-      });
-    }
-  });
-
- let filas = codigos
-  .map(codigo => [codigo, productos[codigo]])
-  .filter(([codigo, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
-  if (filas.length === 0) return;
-
-  const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-  let totalInventarioCosteado = 0;
-
- let tablaHTML = `<h3>${nombre}</h3>`;
-tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
-tablaHTML += `<table><thead><tr>
-  <th>Código</th>
-  <th>Descripción</th>
-  <th>Costo</th>
-  <th>Impuesto</th>
-  <th>Inventario</th>
-  <th>Inventario Costeado</th>
-</tr></thead><tbody>`;
-
-
-  filas.forEach(([codigo, p]) => {
-    const inventario = p.entradas - p.salidas;
-   const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
-    totalInventarioCosteado += totalCosteado;
-    totalGlobalInventario += totalCosteado;
-    const claseFila = inventario < 0 ? 'fila-parpadeo-rojo' : '';
-    tablaHTML += `<tr class="${claseFila}">
-      <td>${codigo}</td>
-      <td>${p.descripcion}</td>
-      <td>${formatter.format(p.costo)}</td>
-      <td>${p.impuesto}</td>
-      <td><strong>${inventario}</strong></td>
-      <td><strong>${formatter.format(totalCosteado)}</strong></td>
-    </tr>`;
-  });
-
-  tablaHTML = tablaHTML.replace(
-    formatter.format(0),
-    formatter.format(totalInventarioCosteado)
-  );
-
-  tablaHTML += "</tbody></table>";
-
-  document.getElementById("tablas").innerHTML += tablaHTML;
-  document.getElementById("totalGlobal").innerText =
-    "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
-}
-
-window.onload = cargarDatos;
-<script>
-  // Telegram LobaZapata
-  const TELEGRAM_BOT_TOKEN = "8495270080:AAFBJ8Vxi6ZhqP6ghtJqMal9RZFz3YJBpo8";
-  const TELEGRAM_CHAT_ID = "6617988297";
-
-  // Lista de SKUs que queremos vigilar
-  const skusClave = [
-    "365", "355", "7016", "7221", "7689", "7686", "2096", "1886", "2097", "1655", "1901",
-    "450079", "450081",
-    "60028", "4451", "250010", "7506241", "210010", "7503033", "7504033", "7505033",
-    "14220", "210004", "3062", "2382", "3217", "7503000134803", "7503000134506",
+  
+      
+    </style>
+  </head>
+  <body>
+    <div id="loader">
+      <div class="spinner"></div>
+      <p>Cargando inventario...</p>
+    </div>
+    <h1>INVENTARIO GENERAL ZAPATA</h1>
+    <h2>📦 Inventario (con movimiento)</h2>
+    <button onclick="window.print()" style="
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #0d47a1;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 999;
+    ">🖨️ Imprimir</button>
+  
+    <h3 id="totalGlobal" style="color:#0d47a1; text-align:left; margin-left:20px;">
+      💰 TOTAL INVENTARIO ZAPATA: $0.00
+    </h3>
+  
+    <div id="tablas"></div>
+  
+  <script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCK5nb6u2CGRJ8AB1aPlRn54b97bdeAFeM",
+    authDomain: "inventariopv-643f1.firebaseapp.com",
+    projectId: "inventariopv-643f1",
+    storageBucket: "inventariopv-643f1.appspot.com",
+    messagingSenderId: "96242533231",
+    appId: "1:96242533231:web:aae75a18fbaf9840529e9a"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  
+  const lineas = {
+    "REYMA": [
+    "365", "355", "357", "364", "363", "7037", "2178", "14578", "7016", "7221",
+    "7689", "7686", "2096", "1886", "2097", "1655", "1901", "7417", "352", "12146",
+    "2409", "2410", "020013", "2411", "2188", "2408", "2190", "3987","3988", "3614",
+    "1347", "020124", "020126", "020127", "020003","055500500", "2351", "1349", "055500500",
+    "2350", "450029", "3864", "3866", "3865", "3738", "14579",
+    "020270", "450065", "750178", "750175", "750182",
+    "020167", "020262", "2397", "2395", "2162", "5853", "4410", "5078", "1502",
+    "1623", "4395", "1386413864", "020066", "5666", "450083", "020133",
+    "020073", "7562", "450006", "7560", "450010", "450007", "7011", "020339",
+    "450008", "7013", "450091", "450090", "141450", "450086", "450087",
+    "450101", "450095", "32322050", "450079", "450081", "020319", "020318",
+    "020297", "020306", "020303", "020300", "020312", "020310", "450089",
+    "450100"
+  ],
+   "BIO PLAST": [
+    "7701200", "7702200", "8802200", "8801200", "9902200", "9901200"
+  ],
+   "JAGUAR": [
+    "020051", "020054", "2033", "2164", "020053", "1484", "2161", "1639", "2162", "020052", "020055", "1356", "1355", "290005", "020052", "1409",
+    "1486", "1485", "450053", "450002"
+  ],
+  "BIGCOLA Y AGUA": [
+    "060028", "4451", "250010", "7506241", "210010", "7503033", "7504033", "7505033", "14220", "210004", "3062", "2382", "3217", "060007", "7503000134803", "7503000134506"
+  ],
+    "CONVERMEX": [
     "104104", "106106", "108108", "110110", "112112", "114114", "116116", "132132",
     "704704", "706706", "708708", "712712", "716716", "732732", "760760",
-    "404404", "406406", "408408", "410410", "412412", "414414", "416416", "516516",
-    "120120", "5283", "5282" "60028", "4451", "250010", "7506241", "210010", "7503033", "7504033", "7505033",
+    "404404", "406406", "408408", "410410", "412412", "414414", "416416",
+    "516516", "120120", "7501431206038", "7501825638728", "7501825638742",
+    "020103", "5283", "5282"
+  ],
+  "BOLSA": [ "4660","7702","13609","131825","132030","134060","142535","142540","144060","145070","147090","150100","150101","150102","150103","150104","7501508800237","7503009154239","7503009154307","7503020773860","7503024644128","7503024644951" ],
+  };
+  const codigosExentos = ["2382", "3062", "3217", "210004", "7503000134506", "7503000134803"];
+  let totalGlobalInventario = 0;
+  
+  async function cargarDatos() {
+    const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
+    const salidasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
+    const productosSnap = await db.collection("productos").get();
+  
+    const usados = new Set();
+  
+    entradasSnap.forEach(doc => {
+      const data = doc.data();
+      if (Array.isArray(data.articulos)) {
+        data.articulos.forEach(item => usados.add(item.codigo));
+      }
+    });
+  
+    salidasSnap.forEach(doc => {
+      const data = doc.data();
+      if (Array.isArray(data.articulos)) {
+        data.articulos.forEach(item => usados.add(item.codigo));
+      }
+    });
+  
+    const codigosTodasLineas = Object.values(lineas).flat();
+    const sinCategoria = [];
+    for (const codigo of usados) {
+      if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
+    }
+  
+    for (const [linea, codigos] of Object.entries(lineas)) {
+      await renderTabla(linea, codigos, productosSnap, entradasSnap, salidasSnap);
+    }
+  
+    if (sinCategoria.length > 0) {
+      await renderTabla("SIN CATEGORÍA", sinCategoria, productosSnap, entradasSnap, salidasSnap, true);
+    }
+  
+    document.getElementById("loader").style.display = "none";
+  }
+  
+  async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
+    const productos = {};
+    productosSnap.forEach(doc => {
+      if (codigos.includes(doc.id)) {
+        const base = doc.data()["Costo sin Impuesto"] || 0;
+        const esExento = codigosExentos.includes(doc.id);
+        const costoFinal = esExento ? base : base * 1.16;
+        productos[doc.id] = {
+          descripcion: doc.data().Concepto || "Sin descripción",
+          impuesto: esExento ? "Exento" : "Con IVA",
+          costo: costoFinal,
+          entradas: 0,
+          salidas: 0
+        };
+      }
+    });
+  
+   entradasSnap.forEach(doc => {
+    const data = doc.data();
+    const codigo = data.codigo;
+    const cantidad = data.cantidad || 0;
+    if (productos[codigo]) {
+      productos[codigo].entradas += cantidad;
+    }
+  });
+  
+    salidasSnap.forEach(doc => {
+      const data = doc.data();
+      if (Array.isArray(data.articulos)) {
+        data.articulos.forEach(item => {
+          if (productos[item.codigo]) {
+            productos[item.codigo].salidas += item.cantidad;
+          }
+        });
+      }
+    });
+  
+   let filas = codigos
+    .map(codigo => [codigo, productos[codigo]])
+    .filter(([codigo, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
+    if (filas.length === 0) return;
+  
+    const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+    let totalInventarioCosteado = 0;
+  
+   let tablaHTML = `<h3>${nombre}</h3>`;
+  tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
+  tablaHTML += `<table><thead><tr>
+    <th>Código</th>
+    <th>Descripción</th>
+    <th>Costo</th>
+    <th>Impuesto</th>
+    <th>Inventario</th>
+    <th>Inventario Costeado</th>
+  </tr></thead><tbody>`;
+  
+  
+    filas.forEach(([codigo, p]) => {
+      const inventario = p.entradas - p.salidas;
+     const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
+      totalInventarioCosteado += totalCosteado;
+      totalGlobalInventario += totalCosteado;
+      const claseFila = inventario < 0 ? 'fila-parpadeo-rojo' : '';
+      tablaHTML += `<tr class="${claseFila}">
+        <td>${codigo}</td>
+        <td>${p.descripcion}</td>
+        <td>${formatter.format(p.costo)}</td>
+        <td>${p.impuesto}</td>
+        <td><strong>${inventario}</strong></td>
+        <td><strong>${formatter.format(totalCosteado)}</strong></td>
+      </tr>`;
+    });
+  
+    tablaHTML = tablaHTML.replace(
+      formatter.format(0),
+      formatter.format(totalInventarioCosteado)
+    );
+  
+    tablaHTML += "</tbody></table>";
+  
+    document.getElementById("tablas").innerHTML += tablaHTML;
+    document.getElementById("totalGlobal").innerText =
+      "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
+  }
+  
+  window.onload = cargarDatos;
+  <script>
+    // Telegram LobaZapata
+    const TELEGRAM_BOT_TOKEN = "8495270080:AAFBJ8Vxi6ZhqP6ghtJqMal9RZFz3YJBpo8";
+    const TELEGRAM_CHAT_ID = "6617988297";
+  
+    // Lista de SKUs que queremos vigilar
+    const skusClave = [
+      "365", "355", "7016", "7221", "7689", "7686", "2096", "1886", "2097", "1655", "1901",
+      "450079", "450081",
+      "60028", "4451", "250010", "7506241", "210010", "7503033", "7504033", "7505033",
       "14220", "210004", "3062", "2382", "3217", "7503000134803", "7503000134506",
       "104104", "106106", "108108", "110110", "112112", "114114", "116116", "132132",
       "704704", "706706", "708708", "712712", "716716", "732732", "760760",
       "404404", "406406", "408408", "410410", "412412", "414414", "416416", "516516",
-      "120120", "5283", "5282"
-  ];
-</script>
-<!-- Botón para revisión manual -->
-<button onclick="revisarInventario()">🔍 Revisar inventario ZAPATA</button>
-
-<script>
-  async function revisarInventario() {
-    const inventarioRef = db.collection("inventario"); // Cambia si tu colección tiene otro nombre
-    const snapshot = await inventarioRef.where("ubicacion", "==", "ZAPATA").get();
-
-    if (snapshot.empty) {
-      alert("No hay datos de inventario para ZAPATA.");
-      return;
-    }
-
-    let mensaje = "📦 Alerta de SKUs en ZAPATA:\n";
-    let hayAlertas = false;
-
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const sku = String(data.sku); // Asegura que sea string
-      const existencia = data.existencia ?? 0;
-
-      if (skusClave.includes(sku) && existencia <= 0) {
-        mensaje += `🔴 SKU ${sku} en negativo o cero (${existencia})\n`;
-        hayAlertas = true;
+      "120120", "5283", "5282", "60028", "4451", "250010", "7506241", "210010", "7503033", "7504033", "7505033",
+        "14220", "210004", "3062", "2382", "3217", "7503000134803", "7503000134506",
+        "104104", "106106", "108108", "110110", "112112", "114114", "116116", "132132",
+        "704704", "706706", "708708", "712712", "716716", "732732", "760760",
+        "404404", "406406", "408408", "410410", "412412", "414414", "416416", "516516",
+        "120120", "5283", "5282"
+    ];
+  </script>
+  <!-- Botón para revisión manual -->
+  <button onclick="revisarInventario()">🔍 Revisar inventario ZAPATA</button>
+  
+  <script>
+    async function revisarInventario() {
+      const inventarioRef = db.collection("inventario"); // Cambia si tu colección tiene otro nombre
+      const snapshot = await inventarioRef.where("ubicacion", "==", "ZAPATA").get();
+  
+      if (snapshot.empty) {
+        alert("No hay datos de inventario para ZAPATA.");
+        return;
       }
-    });
-
-    if (hayAlertas) {
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: TELEGRAM_CHAT_ID,
-          text: mensaje
-        })
+  
+      let mensaje = "📦 Alerta de SKUs en ZAPATA:\n";
+      let hayAlertas = false;
+  
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const sku = String(data.sku); // Asegura que sea string
+        const existencia = data.existencia ?? 0;
+  
+        if (skusClave.includes(sku) && existencia <= 0) {
+          mensaje += `🔴 SKU ${sku} en negativo o cero (${existencia})\n`;
+          hayAlertas = true;
+        }
       });
-      alert("🚨 Notificación enviada a LobaZapata.");
-    } else {
-      alert("✅ Todos los SKUs están bien en ZAPATA.");
+  
+      if (hayAlertas) {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: mensaje
+          })
+        });
+        alert("🚨 Notificación enviada a LobaZapata.");
+      } else {
+        alert("✅ Todos los SKUs están bien en ZAPATA.");
+      }
     }
-  }
-</script>
-
-</body>
-</html>
+  </script>
+  
+  </body>
+  </html>
