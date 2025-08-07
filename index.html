@@ -323,22 +323,21 @@ window.onload = cargarDatos;
     const mensajes = [];
     let mensaje = "📦 Inventario actual en ZAPATA:\n\n";
 
-    skusClave.forEach(codigo => {
-      const existencia = inventario[codigo] ?? 0;
+skusClave.forEach(codigo => {
+  // Solo incluir si tiene descripción fija
+  if (!descripcionesFijas[codigo]) return;
 
-      // ✅ Puedes activar este filtro si solo quieres mostrar existencia baja
-      // if (existencia >= 20) return;
+  const existencia = inventario[codigo] ?? 0;
+  const descripcion = descripcionesFijas[codigo];
+  const linea = `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
 
-      const descripcion = descripciones[codigo] || "Sin descripción";
-      const linea = `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
+  if ((mensaje + linea).length > 4000) {
+    mensajes.push(mensaje);
+    mensaje = "";
+  }
 
-      if ((mensaje + linea).length > 4000) {
-        mensajes.push(mensaje);
-        mensaje = "";
-      }
-
-      mensaje += linea;
-    });
+  mensaje += linea;
+});
 
     if (mensaje) mensajes.push(mensaje);
 
