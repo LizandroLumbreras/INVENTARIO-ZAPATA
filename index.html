@@ -271,13 +271,23 @@ window.onload = cargarDatos;
 <script>
 <script>
 <script>
+<script>
   async function revisarInventario() {
-    const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
-    const salidasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
+    const [entradasSnap, salidasSnap, productosSnap] = await Promise.all([
+      db.collection("almacenes").doc("almacen_zapata").collection("entradas").get(),
+      db.collection("almacenes").doc("almacen_zapata").collection("salidas").get(),
+      db.collection("productos").get()
+    ]);
 
     const inventario = {};
+    const descripciones = {};
 
-    // Cargar entradas
+    // Mapear productos (descripciones por código)
+    productosSnap.forEach(doc => {
+      descripciones[doc.id] = doc.data().Concepto || "Sin descripción";
+    });
+
+    // Entradas
     entradasSnap.forEach(doc => {
       const data = doc.data();
       const codigo = String(data.codigo).trim();
@@ -286,7 +296,7 @@ window.onload = cargarDatos;
       inventario[codigo] += cantidad;
     });
 
-    // Cargar salidas
+    // Salidas
     salidasSnap.forEach(doc => {
       const data = doc.data();
       if (Array.isArray(data.articulos)) {
@@ -299,30 +309,25 @@ window.onload = cargarDatos;
       }
     });
 
-    let mensaje = "📦 Alerta de SKUs en ZAPATA:\n";
-    let hayAlertas = false;
-
+    // Armar mensaje
+    let mensaje = "📦 Inventario actual en ZAPATA:\n\n";
     skusClave.forEach(codigo => {
-      const existencia = inventario[codigo] || 0;
-      if (existencia <= 0) {
-        mensaje += `🔴 SKU ${codigo} en negativo o cero (${existencia})\n`;
-        hayAlertas = true;
-      }
+      const existencia = inventario[codigo] ?? 0;
+      const descripcion = descripciones[codigo] || "Sin descripción";
+      mensaje += `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
     });
 
-    if (hayAlertas) {
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: TELEGRAM_CHAT_ID,
-          text: mensaje
-        })
-      });
-      alert("🚨 Notificación enviada a LobaZapata.");
-    } else {
-      alert("✅ Todos los SKUs están bien en ZAPATA.");
-    }
+    // Enviar mensaje a Telegram
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: mensaje
+      })
+    });
+
+    alert("✅ Inventario con descripciones enviado a LobaZapata.");
   }
 </script>
 </body>
