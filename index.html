@@ -266,8 +266,6 @@ window.onload = cargarDatos;
         "120120", "5283", "5282"
     ];
   </script>
-<!-- Botón para revisión manual -->
-<button onclick="revisarInventario()">🔍 Revisar inventario ZAPATA</button>
 <script>
   async function revisarInventario() {
     const [entradasSnap, salidasSnap, productosSnap] = await Promise.all([
@@ -279,12 +277,32 @@ window.onload = cargarDatos;
     const inventario = {};
     const descripciones = {};
 
-    // Mapear productos (descripciones por código)
+    // ✅ Descripciones fijas que tú definiste
+    const descripcionesFijas = {
+      "355": "REYMA 066 C/500",
+      "365": "REYMA 855 C/500",
+      "1655": "REYMA 9X9 LISA",
+      "1886": "REYMA 8X8 LISA",
+      "2382": "AGUA GYM 12/1.5L",
+      "3062": "AGUA GYM 24/500ML",
+      "3217": "AGUA GYM 12/1L"
+    };
+
+    // Cargar descripciones
     productosSnap.forEach(doc => {
-      descripciones[doc.id] = doc.data().Concepto || "Sin descripción";
+      const codigo = doc.id;
+      const original = doc.data().Concepto || "Sin descripción";
+
+      if (descripcionesFijas[codigo]) {
+        descripciones[codigo] = descripcionesFijas[codigo];
+      } else {
+        descripciones[codigo] = original.length > 60
+          ? original.slice(0, 60) + "..."
+          : original;
+      }
     });
 
-    // Entradas
+    // Calcular inventario
     entradasSnap.forEach(doc => {
       const data = doc.data();
       const codigo = String(data.codigo).trim();
@@ -293,7 +311,6 @@ window.onload = cargarDatos;
       inventario[codigo] += cantidad;
     });
 
-    // Salidas
     salidasSnap.forEach(doc => {
       const data = doc.data();
       if (Array.isArray(data.articulos)) {
@@ -306,33 +323,49 @@ window.onload = cargarDatos;
       }
     });
 
-    // Armar mensaje
+    // ✅ Filtrar y construir mensaje en bloques
+    const mensajes = [];
     let mensaje = "📦 Inventario actual en ZAPATA:\n\n";
+
     skusClave.forEach(codigo => {
       const existencia = inventario[codigo] ?? 0;
+
+      // ✅ Puedes activar este filtro si solo quieres mostrar existencia baja
+      // if (existencia >= 20) return;
+
       const descripcion = descripciones[codigo] || "Sin descripción";
-      mensaje += `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
+      const linea = `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
+
+      if ((mensaje + linea).length > 4000) {
+        mensajes.push(mensaje);
+        mensaje = "";
+      }
+
+      mensaje += linea;
     });
 
-// Enviar mensaje a Telegram
-const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    chat_id: TELEGRAM_CHAT_ID,
-    text: mensaje
-  })
-});
+    if (mensaje) mensajes.push(mensaje);
 
-// Verificar respuesta
-if (!response.ok) {
-  const errorText = await response.text(); // ← Esto es importante para ver el HTML de error
-  console.error("Telegram error:", errorText);
-  alert("❌ Error al enviar el mensaje a Telegram. Revisa la consola.");
-  return;
-}
+    // ✅ Enviar cada bloque
+    for (let i = 0; i < mensajes.length; i++) {
+      const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: mensajes[i]
+        })
+      });
 
-alert("✅ Inventario enviado a LobaZapata.");
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Telegram error:", errorText);
+        alert("❌ Error al enviar mensaje a Telegram.");
+        return;
+      }
+    }
+
+    alert(`✅ Inventario enviado a LobaZapata en ${mensajes.length} parte(s).`);
   }
 </script>
 </body>
