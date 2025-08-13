@@ -245,6 +245,7 @@ window.onload = cargarDatos;
 </script>
 
 <script>
+<script>
 async function revisarInventario() {
   const [entradasSnap, salidasSnap, productosSnap] = await Promise.all([
     db.collection("almacenes").doc("almacen_zapata").collection("entradas").get(),
@@ -306,46 +307,120 @@ async function revisarInventario() {
     }
   });
 
-  const mensajes = [];
-  let mensaje = "📦 Inventario actual en ZAPATA:\n\n";
+  // 📬 Helper Telegram con particionado
+  async function enviarTelegram(texto) {
+    const partes = [];
+    let bloque = "";
+    const LIM = 4000; // margen bajo 4096
+    texto.split("\n").forEach(linea => {
+      if ((bloque + linea + "\n").length > LIM) { partes.push(bloque); bloque = ""; }
+      bloque += linea + "\n";
+    });
+    if (bloque) partes.push(bloque);
 
+    for (let i = 0; i < partes.length; i++) {
+      const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: partes[i] })
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Telegram error:", errorText);
+        alert("❌ Error al enviar mensaje a Telegram.");
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // 🧾 Fecha/hora encabezado
+  const ahora = new Date();
+  const fechaStr = ahora.toLocaleString("es-MX", { hour12: false });
+
+  // 🧨 1) NEGATIVOS
+  let msgNeg = `🚨 INVENTARIOS NEGATIVOS — ZAPATA\n${fechaStr}\n\n`;
+  let hayNegativos = false;
+  Object.keys(inventario).sort().forEach(codigo => {
+    const ex = Number(inventario[codigo] || 0);
+    if (ex < 0) {
+      hayNegativos = true;
+      const desc = descripciones[codigo] || "Sin descripción";
+      const conv = conversionPorSKU[codigo];
+      const enTarimas = conv ? ` | ${ (ex/conv).toFixed(2) } tarimas` : "";
+      msgNeg += `❗ ${codigo} — ${desc}\nExistencia: ${ex}${enTarimas}\n\n`;
+    }
+  });
+  if (!hayNegativos) msgNeg += "✅ Sin negativos.\n";
+
+  // 📉 2) BAJO MÍNIMO
+  let msgMin = `📉 BAJO MÍNIMO — ZAPATA\n${fechaStr}\n\n`;
+  let hayBajo = false;
+  Object.entries(minimosPorSKU).forEach(([codigo, minimo]) => {
+    const ex = Number(inventario[codigo] || 0);
+    if (ex <= minimo) {
+      hayBajo = true;
+      const desc = descripciones[codigo] || "Sin descripción";
+      const faltante = Math.max(0, minimo - ex);
+
+      // Piezas y tarimas (si aplica)
+      const conv = conversionPorSKU[codigo];
+      const exTar = conv ? (ex/conv).toFixed(2) : null;
+      const minTar = conv ? (minimo/conv).toFixed(2) : null;
+      const falTar = conv ? (faltante/conv).toFixed(2) : null;
+
+      msgMin += `⚠️ ${codigo} — ${desc}\n` +
+                `Existencia: ${ex}${exTar ? ` (${exTar} tarimas)` : ""}\n` +
+                `Mínimo: ${minimo}${minTar ? ` (${minTar} tarimas)` : ""}\n` +
+                `Faltante para mínimo: ${faltante}${falTar ? ` (${falTar} tarimas)` : ""}\n\n`;
+    }
+  });
+  if (!hayBajo) msgMin += "✅ Todos por arriba de mínimos configurados.\n";
+
+  // 📦 3) (Opcional) Resumen de SKUs clave con división a tarimas (tu bloque original)
+  let msgClave = `📦 Inventario actual — SKUs clave\n${fechaStr}\n\n`;
   skusClave.forEach(codigo => {
+    // solo mostrar si tenemos una descripción fuerte; puedes quitar esta línea si quieres listar todos
     if (!descripcionesFijas[codigo]) return;
-    const existencia = inventario[codigo] ?? 0;
+    const existencia = Number(inventario[codigo] ?? 0);
     const descripcion = descripcionesFijas[codigo];
     const divisor = conversionPorSKU[codigo];
 
-    let linea;
     if (divisor && divisor > 0) {
       const tarimas = existencia / divisor;
-      linea = `✅ ${codigo} - ${descripcion} entre ${divisor}\n` +
-              `Existencia: ${existencia} / ${divisor} = ${tarimas.toFixed(2)} tarimas\n\n`;
+      msgClave += `✅ ${codigo} - ${descripcion} entre ${divisor}\n` +
+                  `Existencia: ${existencia} / ${divisor} = ${tarimas.toFixed(2)} tarimas\n\n`;
     } else {
-      linea = `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
+      msgClave += `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
     }
-
-    if ((mensaje + linea).length > 4000) { mensajes.push(mensaje); mensaje = ""; }
-    mensaje += linea;
   });
 
-  if (mensaje) mensajes.push(mensaje);
+  // 🚀 Envía en 2–3 bloques
+  const ok1 = await enviarTelegram(msgNeg);
+  const ok2 = await enviarTelegram(msgMin);
+  const ok3 = await enviarTelegram(msgClave);
 
-  for (let i = 0; i < mensajes.length; i++) {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: mensajes[i] })
-    });
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("Telegram error:", errorText);
-      alert("❌ Error al enviar mensaje a Telegram.");
-      return;
-    }
+  if (ok1 && ok2 && ok3) {
+    alert("✅ Reportes de NEGATIVOS, MÍNIMOS y SKUs clave enviados a LobaZapata.");
   }
-
-  alert(`✅ Inventario enviado a LobaZapata en ${mensajes.length} parte(s).`);
 }
+</script>
+  // ⚙️ Mínimos por SKU (en piezas/unidades del SKU)
+  // EDITA estos valores según tus políticas de reabasto.
+  const minimosPorSKU = {
+    "365": 10,
+    "355": 10,
+    "1655": 5,
+    "1886": 5,
+    "2382": 84,        // Agua 12/1.5L (piezas). Si quieres mínimo en tarimas ajusta con conversionPorSKU
+    "3062": 144,       // Agua 24/500ml
+    "3217": 80,        // Agua 12/1L
+    "7503000134803": 72, // Agua 6 Lts
+    "7503000134506": 90  // Agua 10 Lts
+    // ... añade los que necesites
+  };
+</script>
+
 </script>
 </body>
 </html>
