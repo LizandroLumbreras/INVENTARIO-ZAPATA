@@ -319,10 +319,10 @@ async function revisarInventario() {
     if (bloque) partes.push(bloque);
 
     for (let i = 0; i < partes.length; i++) {
-      const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${8495270080:AAFBJ8Vxi6ZhqP6ghtJqMal9RZFz3YJBpo8}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: partes[i] })
+        body: JSON.stringify({ chat_id: 6617988297, text: partes[i] })
       });
       if (!res.ok) {
         const errorText = await res.text();
