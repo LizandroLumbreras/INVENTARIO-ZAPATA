@@ -61,6 +61,34 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// Telegram Config
+const TELEGRAM_BOT_TOKEN = "8495270080:AAFBJ8Vxi6ZhqP6ghtJqMal9RZFz3YJBpo8";
+const TELEGRAM_CHAT_ID = "6617988297";
+
+// Conversión a tarimas y mínimos
+const conversionPorSKU = {
+  "3062":72, "2382":42, "3217":80, "7503000134803":36, "7503000134506":90
+};
+const minimosPorSKU = {
+  "365": 10,
+  "355": 10,
+  "1655": 5,
+  "1886": 5,
+  "2382": 84,
+  "3062": 144,
+  "3217": 80,
+  "7503000134803": 72,
+  "7503000134506": 90,
+  "60028": 200,
+  "250010": 384,
+  "4451": 150,
+  "210010": 100,
+  "7503033": 200,
+  "7505033": 30,
+  "210004": 300
+};
+
+// Aquí pega tus objetos "lineas" y "codigosExentos"
 const lineas = {
   "REYMA":[
     "365","355","357","364","363","7037","2178","14578","7016","7221","7689","7686","2096","1886","2097","1655","1901","7417","352","12146",
@@ -86,35 +114,25 @@ const lineas = {
     "7501508800237","7503009154239","7503009154307","7503020773860","7503024644128","7503024644951"
   ]
 };
+
 const codigosExentos = ["2382","3062","3217","210004","7503000134506","7503000134803"];
 
 let totalGlobalInventario = 0;
 
+// Cargar datos de Firestore y renderizar tablas
 async function cargarDatos() {
   const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
   const salidasSnap  = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
   const productosSnap = await db.collection("productos").get();
 
   const usados = new Set();
-
-  // ➜ ENTRADAS: soporta arreglo 'articulos' y formato raíz (codigo/cantidad)
   entradasSnap.forEach(doc => {
     const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(it => usados.add(String(it.codigo)));
-    } else if (data.codigo !== undefined) {
-      usados.add(String(data.codigo));
-    }
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(it => usados.add(String(it.codigo)));
   });
-
-  // ➜ SALIDAS: soporte híbrido también (por si existe algún doc viejo)
   salidasSnap.forEach(doc => {
     const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(it => usados.add(String(it.codigo)));
-    } else if (data.codigo !== undefined) {
-      usados.add(String(data.codigo));
-    }
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(it => usados.add(String(it.codigo)));
   });
 
   const codigosTodasLineas = Object.values(lineas).flat();
@@ -150,46 +168,25 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     }
   });
 
-  // ✅ ENTRADAS HÍBRIDO
   entradasSnap.forEach(doc => {
     const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => {
-        const codigo = String(item.codigo).trim();
-        const cantidad = Number(item.cantidad) || 0;
-        if (productos[codigo]) productos[codigo].entradas += cantidad;
-      });
-    } else if (data.codigo !== undefined) {
-      const codigo = String(data.codigo).trim();
-      const cantidad = Number(data.cantidad) || 0;
-      if (productos[codigo]) productos[codigo].entradas += cantidad;
-    }
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+      if (productos[item.codigo]) productos[item.codigo].entradas += Number(item.cantidad) || 0;
+    });
   });
-
-  // ✅ SALIDAS HÍBRIDO
   salidasSnap.forEach(doc => {
     const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => {
-        const codigo = String(item.codigo).trim();
-        const cantidad = Number(item.cantidad) || 0;
-        if (productos[codigo]) productos[codigo].salidas += cantidad;
-      });
-    } else if (data.codigo !== undefined) {
-      const codigo = String(data.codigo).trim();
-      const cantidad = Number(data.cantidad) || 0;
-      if (productos[codigo]) productos[codigo].salidas += cantidad;
-    }
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+      if (productos[item.codigo]) productos[item.codigo].salidas += Number(item.cantidad) || 0;
+    });
   });
 
-  let filas = codigos
-    .map(codigo => [codigo, productos[codigo]])
-    .filter(([codigo, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
+  let filas = codigos.map(codigo => [codigo, productos[codigo]])
+                     .filter(([_, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
   if (filas.length === 0) return;
 
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
-
   let tablaHTML = `<h3>${nombre}</h3>`;
   tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
   tablaHTML += `<table><thead><tr>
@@ -225,27 +222,32 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
 }
 
-window.onload = cargarDatos;
-</script>
+// Enviar mensajes a Telegram (corte automático)
+async function enviarTelegram(texto) {
+  const partes = [];
+  let bloque = "";
+  const LIM = 4000;
+  texto.split("\n").forEach(linea => {
+    if ((bloque + linea + "\n").length > LIM) { partes.push(bloque); bloque = ""; }
+    bloque += linea + "\n";
+  });
+  if (bloque) partes.push(bloque);
 
-<script>
-  // Telegram LobaZapata
-  const TELEGRAM_BOT_TOKEN = "8495270080:AAFBJ8Vxi6ZhqP6ghtJqMal9RZFz3YJBpo8";
-  const TELEGRAM_CHAT_ID = "6617988297";
-  const skusClave = [...new Set([
-    "365","355","7016","7221","7689","7686","2096","1886","2097","1655","1901",
-    "450079","450081",
-    "060028","4451","250010","7506241","210010","7503033","7504033","7505033",
-    "14220","210004","3062","2382","3217","7503000134803","7503000134506",
-    "104104","106106","108108","110110","112112","114114","116116","132132",
-    "704704","706706","708708","712712","716716","732732","760760",
-    "404404","406406","408408","410410","412412","414414","416416","516516",
-    "120120","5283","5282"
-  ])];
-</script>
+  for (let parte of partes) {
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: parte })
+    });
+    if (!res.ok) {
+      console.error("Telegram error:", await res.text());
+      alert("❌ Error al enviar mensaje a Telegram.");
+      return false;
+    }
+  }
+  return true;
+}
 
-<script>
-<script>
 async function revisarInventario() {
   const [entradasSnap, salidasSnap, productosSnap] = await Promise.all([
     db.collection("almacenes").doc("almacen_zapata").collection("entradas").get(),
@@ -253,174 +255,62 @@ async function revisarInventario() {
     db.collection("productos").get()
   ]);
 
-  const conversionPorSKU = {
-    "3062":72, "2382":42, "3217":80, "7503000134803":36, "7503000134506":90
-  };
-
   const inventario = {};
   const descripciones = {};
-  const descripcionesFijas = {
-    "355":"REYMA 066 C/500","365":"REYMA 855 C/500","1655":"REYMA 9X9 LISA","1886":"REYMA 8X8 LISA",
-    "2382":"AGUA GYM 12/1.5L","3062":"AGUA GYM 24/500ML","3217":"AGUA GYM 12/1L",
-    "7503000134803":"AGUA GYM 6 LTS","7503000134506":"AGUA GYM 10 LTS"
-  };
-
   productosSnap.forEach(doc => {
-    const codigo = doc.id;
-    const original = doc.data().Concepto || "Sin descripción";
-    descripciones[codigo] = descripcionesFijas[codigo] || (original.length>60 ? original.slice(0,60)+"..." : original);
+    descripciones[doc.id] = doc.data().Concepto || "Sin descripción";
   });
 
-  // ✅ ENTRADAS HÍBRIDO
   entradasSnap.forEach(doc => {
     const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => {
-        const codigo = String(item.codigo).trim();
-        const cantidad = Number(item.cantidad) || 0;
-        if (!inventario[codigo]) inventario[codigo] = 0;
-        inventario[codigo] += cantidad;
-      });
-    } else if (data.codigo !== undefined) {
-      const codigo = String(data.codigo).trim();
-      const cantidad = Number(data.cantidad) || 0;
-      if (!inventario[codigo]) inventario[codigo] = 0;
-      inventario[codigo] += cantidad;
-    }
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+      inventario[item.codigo] = (inventario[item.codigo] || 0) + (Number(item.cantidad) || 0);
+    });
   });
-
-  // ✅ SALIDAS HÍBRIDO
   salidasSnap.forEach(doc => {
     const data = doc.data();
-    if (Array.isArray(data.articulos)) {
-      data.articulos.forEach(item => {
-        const codigo = String(item.codigo).trim();
-        const cantidad = Number(item.cantidad) || 0;
-        if (!inventario[codigo]) inventario[codigo] = 0;
-        inventario[codigo] -= cantidad;
-      });
-    } else if (data.codigo !== undefined) {
-      const codigo = String(data.codigo).trim();
-      const cantidad = Number(data.cantidad) || 0;
-      if (!inventario[codigo]) inventario[codigo] = 0;
-      inventario[codigo] -= cantidad;
-    }
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+      inventario[item.codigo] = (inventario[item.codigo] || 0) - (Number(item.cantidad) || 0);
+    });
   });
 
-  // 📬 Helper Telegram con particionado
-  async function enviarTelegram(texto) {
-    const partes = [];
-    let bloque = "";
-    const LIM = 4000; // margen bajo 4096
-    texto.split("\n").forEach(linea => {
-      if ((bloque + linea + "\n").length > LIM) { partes.push(bloque); bloque = ""; }
-      bloque += linea + "\n";
-    });
-    if (bloque) partes.push(bloque);
+  const fechaStr = new Date().toLocaleString("es-MX", { hour12: false });
 
-    for (let i = 0; i < partes.length; i++) {
-      const res = await fetch(`https://api.telegram.org/bot${8495270080:AAFBJ8Vxi6ZhqP6ghtJqMal9RZFz3YJBpo8}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: 6617988297, text: partes[i] })
-      });
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Telegram error:", errorText);
-        alert("❌ Error al enviar mensaje a Telegram.");
-        return false;
-      }
-    }
-    return true;
-  }
-
-  // 🧾 Fecha/hora encabezado
-  const ahora = new Date();
-  const fechaStr = ahora.toLocaleString("es-MX", { hour12: false });
-
-  // 🧨 1) NEGATIVOS
+  // NEGATIVOS
   let msgNeg = `🚨 INVENTARIOS NEGATIVOS — ZAPATA\n${fechaStr}\n\n`;
   let hayNegativos = false;
   Object.keys(inventario).sort().forEach(codigo => {
-    const ex = Number(inventario[codigo] || 0);
-    if (ex < 0) {
+    if (inventario[codigo] < 0) {
       hayNegativos = true;
-      const desc = descripciones[codigo] || "Sin descripción";
       const conv = conversionPorSKU[codigo];
-      const enTarimas = conv ? ` | ${ (ex/conv).toFixed(2) } tarimas` : "";
-      msgNeg += `❗ ${codigo} — ${desc}\nExistencia: ${ex}${enTarimas}\n\n`;
+      msgNeg += `❗ ${codigo} — ${descripciones[codigo]}\nExistencia: ${inventario[codigo]}${conv ? ` (${(inventario[codigo]/conv).toFixed(2)} tarimas)` : ""}\n\n`;
     }
   });
   if (!hayNegativos) msgNeg += "✅ Sin negativos.\n";
 
-  // 📉 2) BAJO MÍNIMO
+  // BAJO MÍNIMO
   let msgMin = `📉 BAJO MÍNIMO — ZAPATA\n${fechaStr}\n\n`;
   let hayBajo = false;
   Object.entries(minimosPorSKU).forEach(([codigo, minimo]) => {
-    const ex = Number(inventario[codigo] || 0);
-    if (ex <= minimo) {
+    if ((inventario[codigo] || 0) <= minimo) {
       hayBajo = true;
-      const desc = descripciones[codigo] || "Sin descripción";
-      const faltante = Math.max(0, minimo - ex);
-
-      // Piezas y tarimas (si aplica)
       const conv = conversionPorSKU[codigo];
-      const exTar = conv ? (ex/conv).toFixed(2) : null;
-      const minTar = conv ? (minimo/conv).toFixed(2) : null;
-      const falTar = conv ? (faltante/conv).toFixed(2) : null;
-
-      msgMin += `⚠️ ${codigo} — ${desc}\n` +
-                `Existencia: ${ex}${exTar ? ` (${exTar} tarimas)` : ""}\n` +
-                `Mínimo: ${minimo}${minTar ? ` (${minTar} tarimas)` : ""}\n` +
-                `Faltante para mínimo: ${faltante}${falTar ? ` (${falTar} tarimas)` : ""}\n\n`;
+      const faltante = Math.max(0, minimo - (inventario[codigo] || 0));
+      msgMin += `⚠️ ${codigo} — ${descripciones[codigo]}\n` +
+                `Existencia: ${inventario[codigo] || 0}${conv ? ` (${((inventario[codigo] || 0)/conv).toFixed(2)} tarimas)` : ""}\n` +
+                `Mínimo: ${minimo}${conv ? ` (${(minimo/conv).toFixed(2)} tarimas)` : ""}\n` +
+                `Faltante: ${faltante}${conv ? ` (${(faltante/conv).toFixed(2)} tarimas)` : ""}\n\n`;
     }
   });
-  if (!hayBajo) msgMin += "✅ Todos por arriba de mínimos configurados.\n";
+  if (!hayBajo) msgMin += "✅ Todos por arriba de mínimos.\n";
 
-  // 📦 3) (Opcional) Resumen de SKUs clave con división a tarimas (tu bloque original)
-  let msgClave = `📦 Inventario actual — SKUs clave\n${fechaStr}\n\n`;
-  skusClave.forEach(codigo => {
-    // solo mostrar si tenemos una descripción fuerte; puedes quitar esta línea si quieres listar todos
-    if (!descripcionesFijas[codigo]) return;
-    const existencia = Number(inventario[codigo] ?? 0);
-    const descripcion = descripcionesFijas[codigo];
-    const divisor = conversionPorSKU[codigo];
-
-    if (divisor && divisor > 0) {
-      const tarimas = existencia / divisor;
-      msgClave += `✅ ${codigo} - ${descripcion} entre ${divisor}\n` +
-                  `Existencia: ${existencia} / ${divisor} = ${tarimas.toFixed(2)} tarimas\n\n`;
-    } else {
-      msgClave += `✅ ${codigo} - ${descripcion}\nExistencia: ${existencia}\n\n`;
-    }
-  });
-
-  // 🚀 Envía en 2–3 bloques
-  const ok1 = await enviarTelegram(msgNeg);
-  const ok2 = await enviarTelegram(msgMin);
-  const ok3 = await enviarTelegram(msgClave);
-
-  if (ok1 && ok2 && ok3) {
-    alert("✅ Reportes de NEGATIVOS, MÍNIMOS y SKUs clave enviados a LobaZapata.");
-  }
+  await enviarTelegram(msgNeg);
+  await enviarTelegram(msgMin);
+  alert("✅ Reportes enviados a LobaZapata.");
 }
-</script>
-  // ⚙️ Mínimos por SKU (en piezas/unidades del SKU)
-  // EDITA estos valores según tus políticas de reabasto.
-  const minimosPorSKU = {
-    "365": 10,
-    "355": 10,
-    "1655": 5,
-    "1886": 5,
-    "2382": 84,        // Agua 12/1.5L (piezas). Si quieres mínimo en tarimas ajusta con conversionPorSKU
-    "3062": 144,       // Agua 24/500ml
-    "3217": 80,        // Agua 12/1L
-    "7503000134803": 72, // Agua 6 Lts
-    "7503000134506": 90  // Agua 10 Lts
-    // ... añade los que necesites
-  };
+
+window.onload = cargarDatos;
 </script>
 
-</script>
 </body>
 </html>
