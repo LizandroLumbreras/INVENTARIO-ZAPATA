@@ -153,55 +153,78 @@ async function cargarDatos() {
 
 /* ===================== CAMBIO IMPORTANTE AQUÍ ===================== */
 async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
-  const productos = {};
-  // Mapear productos usando los NOMBRES DE CAMPO reales de tu Firestore
+  // Helpers
+  const getFirst = (obj, keys, def=null) => {
+    for (const k of keys) if (obj?.[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+    return def;
+  };
+  const toKey = v => String(v ?? "").trim();
+
+  // 1) Indexar productos por doc.id y por codigoBarra
+  const byId = {};
+  const byCB = {};
   productosSnap.forEach(doc => {
-    if (!codigos.includes(doc.id)) return;
-    const data = doc.data();
+    const d = doc.data() || {};
+    byId[toKey(doc.id)] = d;
+    const cb = toKey(d.codigoBarra || d.CodigoBarra || d.codigo || d.CODIGO);
+    if (cb) byCB[cb] = d;
+  });
 
-    // Campos correctos según tu screenshot:
-    // concepto (string), costoSinImpuesto (number), ivaTasa (number 0/0.16), codigoBarra (string)
-    const descripcion = data.concepto ?? "Sin descripción";
-    const costoBase = Number(data.costoSinImpuesto ?? data.costo ?? 0);
-    const ivaTasa = Number(data.ivaTasa ?? 0); // 0 o 0.16
+  // 2) Inicializar estructura por cada código de la línea usando el producto encontrado
+  const productos = {};
+  codigos.forEach(codigo => {
+    const k = toKey(codigo);
+    const d = byId[k] || byCB[k] || null;
+    if (!d) return; // si no existe en productos, no lo mostramos
 
-    // Exento si está en la lista o si ivaTasa == 0
-    const forzarExento = codigosExentos.includes(doc.id);
+    const descripcion = getFirst(d, ["concepto","Concepto","descripcion","Descripción","Descripcion","nombre","Nombre"], "Sin descripción");
+
+    // costo sin IVA (tomamos la primera variante que exista)
+    let costoBase = Number(getFirst(d, [
+      "costoSinImpuesto","Costo sin Impuesto","costo_sin_impuesto",
+      "costo","Costo","costoUnitario","costo_unitario",
+      "mayoreo","medioMayoreo","precioPublico"
+    ], 0)) || 0;
+
+    // IVA
+    let ivaTasa = Number(getFirst(d, ["ivaTasa","iva_tasa"], null));
+    const ivaBool = getFirst(d, ["iva","tieneIva","conIva"], null);
+    if (ivaTasa === null && (ivaBool === true || ivaBool === "true")) ivaTasa = 0.16;
+    if (ivaTasa === null && (ivaBool === false || ivaBool === "false")) ivaTasa = 0;
+
+    const forzarExento = codigosExentos.includes(k);
     const esExento = forzarExento || ivaTasa === 0;
 
-    const costoFinal = esExento ? costoBase : costoBase * (1 + (ivaTasa || 0.16)); // por defecto 16% si viene vacío pero es gravado
-    const etiquetaImpuesto = esExento ? "Exento" : "Con IVA";
+    const costoFinal = esExento ? costoBase : costoBase * (1 + (ivaTasa ?? 0.16));
 
-    productos[doc.id] = {
+    productos[k] = {
       descripcion,
-      impuesto: etiquetaImpuesto,
+      impuesto: esExento ? "Exento" : "Con IVA",
       costo: isFinite(costoFinal) ? costoFinal : 0,
       entradas: 0,
       salidas: 0
     };
   });
 
-  // Sumar entradas/salidas
-  entradasSnap.forEach(doc => {
-    const data = doc.data();
-    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
-      const cod = String(item.codigo);
-      if (productos[cod]) productos[cod].entradas += Number(item.cantidad) || 0;
+  // 3) Sumar movimientos solo a los códigos de esta línea
+  const sumarMovs = (snap, sign) => {
+    snap.forEach(doc => {
+      const data = doc.data();
+      (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+        const k = toKey(item.codigo);
+        if (productos[k]) productos[k].entradas += sign * (Number(item.cantidad) || 0); // sign=+1 para entradas, -1 para salidas
+      });
     });
-  });
-  salidasSnap.forEach(doc => {
-    const data = doc.data();
-    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
-      const cod = String(item.codigo);
-      if (productos[cod]) productos[cod].salidas += Number(item.cantidad) || 0;
-    });
-  });
+  };
+  sumarMovs(entradasSnap, +1);
+  sumarMovs(salidasSnap, -1);
 
-  // Filas con movimiento (si aplica)
-  let filas = codigos.map(codigo => [codigo, productos[codigo]])
-                     .filter(([_, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
+  // 4) Filtrar por movimiento si se pidió así
+  let filas = Object.entries(productos)
+    .filter(([_, p]) => (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
   if (filas.length === 0) return;
 
+  // 5) Render
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
 
@@ -217,7 +240,7 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   </tr></thead><tbody>`;
 
   filas.forEach(([codigo, p]) => {
-    const inventario = (p.entradas - p.salidas);
+    const inventario = p.entradas + p.salidas; // ya venían con signo
     const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
     totalInventarioCosteado += totalCosteado;
     totalGlobalInventario += totalCosteado;
@@ -235,19 +258,18 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
 
   tablaHTML += "</tbody></table>";
 
-  // Pintar tabla y totales
   const cont = document.getElementById("tablas");
   const wrapper = document.createElement("div");
   wrapper.innerHTML = tablaHTML;
   cont.appendChild(wrapper);
 
-  // Actualizar el total de esa sección y el global
   wrapper.querySelector(`.total-${nombre.replace(/\s/g,'\\ ')}`).textContent =
     `🧾 Total Inventario Costeado: ${formatter.format(totalInventarioCosteado)}`;
 
   document.getElementById("totalGlobal").innerText =
-    "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
+    "💰 TOTAL INVENTARIO ZAPATA: " + new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(totalGlobalInventario);
 }
+
 /* =================== FIN DE CAMBIO IMPORTANTE ===================== */
 
 // Enviar mensajes a Telegram (corte automático)
