@@ -151,44 +151,62 @@ async function cargarDatos() {
   document.getElementById("loader").style.display = "none";
 }
 
+/* ===================== CAMBIO IMPORTANTE AQUÍ ===================== */
 async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
   const productos = {};
+  // Mapear productos usando los NOMBRES DE CAMPO reales de tu Firestore
   productosSnap.forEach(doc => {
-    if (codigos.includes(doc.id)) {
-      const base = doc.data()["Costo sin Impuesto"] || 0;
-      const esExento = codigosExentos.includes(doc.id);
-      const costoFinal = esExento ? base : base * 1.16;
-      productos[doc.id] = {
-        descripcion: doc.data().Concepto || "Sin descripción",
-        impuesto: esExento ? "Exento" : "Con IVA",
-        costo: costoFinal,
-        entradas: 0,
-        salidas: 0
-      };
-    }
+    if (!codigos.includes(doc.id)) return;
+    const data = doc.data();
+
+    // Campos correctos según tu screenshot:
+    // concepto (string), costoSinImpuesto (number), ivaTasa (number 0/0.16), codigoBarra (string)
+    const descripcion = data.concepto ?? "Sin descripción";
+    const costoBase = Number(data.costoSinImpuesto ?? data.costo ?? 0);
+    const ivaTasa = Number(data.ivaTasa ?? 0); // 0 o 0.16
+
+    // Exento si está en la lista o si ivaTasa == 0
+    const forzarExento = codigosExentos.includes(doc.id);
+    const esExento = forzarExento || ivaTasa === 0;
+
+    const costoFinal = esExento ? costoBase : costoBase * (1 + (ivaTasa || 0.16)); // por defecto 16% si viene vacío pero es gravado
+    const etiquetaImpuesto = esExento ? "Exento" : "Con IVA";
+
+    productos[doc.id] = {
+      descripcion,
+      impuesto: etiquetaImpuesto,
+      costo: isFinite(costoFinal) ? costoFinal : 0,
+      entradas: 0,
+      salidas: 0
+    };
   });
 
+  // Sumar entradas/salidas
   entradasSnap.forEach(doc => {
     const data = doc.data();
     (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
-      if (productos[item.codigo]) productos[item.codigo].entradas += Number(item.cantidad) || 0;
+      const cod = String(item.codigo);
+      if (productos[cod]) productos[cod].entradas += Number(item.cantidad) || 0;
     });
   });
   salidasSnap.forEach(doc => {
     const data = doc.data();
     (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
-      if (productos[item.codigo]) productos[item.codigo].salidas += Number(item.cantidad) || 0;
+      const cod = String(item.codigo);
+      if (productos[cod]) productos[cod].salidas += Number(item.cantidad) || 0;
     });
   });
 
+  // Filas con movimiento (si aplica)
   let filas = codigos.map(codigo => [codigo, productos[codigo]])
                      .filter(([_, p]) => p !== undefined && (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
   if (filas.length === 0) return;
 
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
+
   let tablaHTML = `<h3>${nombre}</h3>`;
-  tablaHTML += `<p style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
+  tablaHTML += `<p class="total-${nombre}" style="text-align:right; font-weight:bold; color:#0d47a1;">🧾 Total Inventario Costeado: ${formatter.format(0)}</p>`;
   tablaHTML += `<table><thead><tr>
     <th>Código</th>
     <th>Descripción</th>
@@ -199,10 +217,11 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   </tr></thead><tbody>`;
 
   filas.forEach(([codigo, p]) => {
-    const inventario = p.entradas - p.salidas;
+    const inventario = (p.entradas - p.salidas);
     const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
     totalInventarioCosteado += totalCosteado;
     totalGlobalInventario += totalCosteado;
+
     const claseFila = inventario < 0 ? 'fila-parpadeo-rojo' : '';
     tablaHTML += `<tr class="${claseFila}">
       <td>${codigo}</td>
@@ -214,13 +233,22 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     </tr>`;
   });
 
-  tablaHTML = tablaHTML.replace(formatter.format(0), formatter.format(totalInventarioCosteado));
   tablaHTML += "</tbody></table>";
 
-  document.getElementById("tablas").innerHTML += tablaHTML;
+  // Pintar tabla y totales
+  const cont = document.getElementById("tablas");
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = tablaHTML;
+  cont.appendChild(wrapper);
+
+  // Actualizar el total de esa sección y el global
+  wrapper.querySelector(`.total-${nombre.replace(/\s/g,'\\ ')}`).textContent =
+    `🧾 Total Inventario Costeado: ${formatter.format(totalInventarioCosteado)}`;
+
   document.getElementById("totalGlobal").innerText =
     "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
 }
+/* =================== FIN DE CAMBIO IMPORTANTE ===================== */
 
 // Enviar mensajes a Telegram (corte automático)
 async function enviarTelegram(texto) {
@@ -258,7 +286,8 @@ async function revisarInventario() {
   const inventario = {};
   const descripciones = {};
   productosSnap.forEach(doc => {
-    descripciones[doc.id] = doc.data().Concepto || "Sin descripción";
+    const d = doc.data();
+    descripciones[doc.id] = d.concepto || "Sin descripción";
   });
 
   entradasSnap.forEach(doc => {
