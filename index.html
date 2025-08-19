@@ -70,28 +70,14 @@ const conversionPorSKU = {
   "3062":72, "2382":42, "3217":80, "7503000134803":36, "7503000134506":90
 };
 const minimosPorSKU = {
-  "365": 10,
-  "355": 10,
-  "1655": 5,
-  "1886": 5,
-  "2382": 84,
-  "3062": 144,
-  "3217": 80,
-  "7503000134803": 72,
-  "7503000134506": 90,
-  "060028": 200,
-  "250010": 384,
-  "4451": 150,
-  "210010": 100,
-  "7503033": 200,
-  "7505033": 30,
-  "210004": 300
+  "365": 10, "355": 10, "1655": 5, "1886": 5, "2382": 84, "3062": 144, "3217": 80,
+  "7503000134803": 72, "7503000134506": 90, "060028": 200, "250010": 384, "4451": 150,
+  "210010": 100, "7503033": 200, "7505033": 30, "210004": 300
 };
 
-// Aquí pega tus objetos "lineas" y "codigosExentos"
+// Líneas y exentos
 const lineas = {
-  "REYMA":[
-    "365","355","357","364","363","7037","2178","14578","7016","7221","7689","7686","2096","1886","2097","1655","1901","7417","352","12146",
+  "REYMA":[ "365","355","357","364","363","7037","2178","14578","7016","7221","7689","7686","2096","1886","2097","1655","1901","7417","352","12146",
     "2409","2410","020013","2411","2188","2408","2190","3987","3988","3614","1347","020124","020126","020127","020003","055500500","2351","1349",
     "2350","450029","3864","3866","3865","3738","14579","020270","450065","750178","750175","750182","020167","020262","2397","2395","5853","4410",
     "5078","1502","1623","4395","1386413864","020066","5666","450083","020133","020073","7562","450006","7560","450010","450007","7011","020339",
@@ -99,25 +85,25 @@ const lineas = {
     "020306","020303","020300","020312","020310","450089","450100"
   ],
   "BIO PLAST":["7701200","7702200","8802200","8801200","9902200","9901200"],
-  "JAGUAR":[
-    "020051","020054","2033","2164","020053","1484","2161","1639","2162","020052","020055","1356","1355","290005","020052","1409","1486","1485","450053","450002"
-  ],
-  "BIGCOLA Y AGUA":[
-    "060028","4451","250010","7506241","210010","7503033","7504033","7505033","14220","210004","3062","2382","3217","060007","7503000134803","7503000134506"
-  ],
-  "CONVERMEX":[
-    "104104","106106","108108","110110","112112","114114","116116","132132","704704","706706","708708","712712","716716","732732","760760",
+  "JAGUAR":[ "020051","020054","2033","2164","020053","1484","2161","1639","2162","020052","020055","1356","1355","290005","020052","1409","1486","1485","450053","450002" ],
+  "BIGCOLA Y AGUA":[ "060028","4451","250010","7506241","210010","7503033","7504033","7505033","14220","210004","3062","2382","3217","060007","7503000134803","7503000134506" ],
+  "CONVERMEX":[ "104104","106106","108108","110110","112112","114114","116116","132132","704704","706706","708708","712712","716716","732732","760760",
     "404404","406406","408408","410410","412412","414414","416416","516516","120120","7501431206038","7501825638728","7501825638742","020103","5283","5282"
   ],
-  "BOLSA":[
-    "4660","7702","13609","131825","132030","134060","142535","142540","144060","145070","147090","150100","150101","150102","150103","150104",
+  "BOLSA":[ "4660","7702","13609","131825","132030","134060","142535","142540","144060","145070","147090","150100","150101","150102","150103","150104",
     "7501508800237","7503009154239","7503009154307","7503020773860","7503024644128","7503024644951"
   ]
 };
-
 const codigosExentos = ["2382","3062","3217","210004","7503000134506","7503000134803"];
 
 let totalGlobalInventario = 0;
+
+// Utilidad
+const getFirst = (obj, keys, def=null) => {
+  for (const k of keys) if (obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+  return def;
+};
+const toKey = v => String(v ?? "").trim();
 
 // Cargar datos de Firestore y renderizar tablas
 async function cargarDatos() {
@@ -125,6 +111,7 @@ async function cargarDatos() {
   const salidasSnap  = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
   const productosSnap = await db.collection("productos").get();
 
+  // Códigos con movimiento (para la sección SIN CATEGORÍA)
   const usados = new Set();
   entradasSnap.forEach(doc => {
     const data = doc.data();
@@ -137,10 +124,9 @@ async function cargarDatos() {
 
   const codigosTodasLineas = Object.values(lineas).flat();
   const sinCategoria = [];
-  for (const codigo of usados) {
-    if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
-  }
+  for (const codigo of usados) if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
 
+  // Render por línea
   for (const [linea, codigos] of Object.entries(lineas)) {
     await renderTabla(linea, codigos, productosSnap, entradasSnap, salidasSnap);
   }
@@ -151,16 +137,9 @@ async function cargarDatos() {
   document.getElementById("loader").style.display = "none";
 }
 
-/* ===================== CAMBIO IMPORTANTE AQUÍ ===================== */
+// Render de cada tabla (robusto: busca por doc.id o por codigoBarra)
 async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
-  // Helpers
-  const getFirst = (obj, keys, def=null) => {
-    for (const k of keys) if (obj?.[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
-    return def;
-  };
-  const toKey = v => String(v ?? "").trim();
-
-  // 1) Indexar productos por doc.id y por codigoBarra
+  // Índices de productos
   const byId = {};
   const byCB = {};
   productosSnap.forEach(doc => {
@@ -170,16 +149,16 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     if (cb) byCB[cb] = d;
   });
 
-  // 2) Inicializar estructura por cada código de la línea usando el producto encontrado
+  // Construir mapa de productos para la línea
   const productos = {};
   codigos.forEach(codigo => {
-    const k = toKey(codigo);
-    const d = byId[k] || byCB[k] || null;
-    if (!d) return; // si no existe en productos, no lo mostramos
+    const key = toKey(codigo);
+    const d = byId[key] || byCB[key];
+    if (!d) return;
 
     const descripcion = getFirst(d, ["concepto","Concepto","descripcion","Descripción","Descripcion","nombre","Nombre"], "Sin descripción");
 
-    // costo sin IVA (tomamos la primera variante que exista)
+    // costo base (sin IVA) con alias
     let costoBase = Number(getFirst(d, [
       "costoSinImpuesto","Costo sin Impuesto","costo_sin_impuesto",
       "costo","Costo","costoUnitario","costo_unitario",
@@ -192,12 +171,12 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     if (ivaTasa === null && (ivaBool === true || ivaBool === "true")) ivaTasa = 0.16;
     if (ivaTasa === null && (ivaBool === false || ivaBool === "false")) ivaTasa = 0;
 
-    const forzarExento = codigosExentos.includes(k);
+    const forzarExento = codigosExentos.includes(key);
     const esExento = forzarExento || ivaTasa === 0;
 
     const costoFinal = esExento ? costoBase : costoBase * (1 + (ivaTasa ?? 0.16));
 
-    productos[k] = {
+    productos[key] = {
       descripcion,
       impuesto: esExento ? "Exento" : "Con IVA",
       costo: isFinite(costoFinal) ? costoFinal : 0,
@@ -206,25 +185,27 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     };
   });
 
-  // 3) Sumar movimientos solo a los códigos de esta línea
-  const sumarMovs = (snap, sign) => {
-    snap.forEach(doc => {
-      const data = doc.data();
-      (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
-        const k = toKey(item.codigo);
-        if (productos[k]) productos[k].entradas += sign * (Number(item.cantidad) || 0); // sign=+1 para entradas, -1 para salidas
-      });
+  // Sumar movimientos
+  entradasSnap.forEach(doc => {
+    const data = doc.data();
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+      const k = toKey(item.codigo);
+      if (productos[k]) productos[k].entradas += Number(item.cantidad) || 0;
     });
-  };
-  sumarMovs(entradasSnap, +1);
-  sumarMovs(salidasSnap, -1);
+  });
+  salidasSnap.forEach(doc => {
+    const data = doc.data();
+    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
+      const k = toKey(item.codigo);
+      if (productos[k]) productos[k].salidas += Number(item.cantidad) || 0;
+    });
+  });
 
-  // 4) Filtrar por movimiento si se pidió así
+  // Filas con/sin movimiento
   let filas = Object.entries(productos)
     .filter(([_, p]) => (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
   if (filas.length === 0) return;
 
-  // 5) Render
   const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   let totalInventarioCosteado = 0;
 
@@ -240,7 +221,7 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   </tr></thead><tbody>`;
 
   filas.forEach(([codigo, p]) => {
-    const inventario = p.entradas + p.salidas; // ya venían con signo
+    const inventario = p.entradas - p.salidas;
     const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
     totalInventarioCosteado += totalCosteado;
     totalGlobalInventario += totalCosteado;
@@ -256,21 +237,20 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     </tr>`;
   });
 
-  tablaHTML += "</tbody></table>";
+  tablaHTML += `</tbody></table>`;
 
   const cont = document.getElementById("tablas");
   const wrapper = document.createElement("div");
   wrapper.innerHTML = tablaHTML;
   cont.appendChild(wrapper);
 
+  // Actualizar totales
   wrapper.querySelector(`.total-${nombre.replace(/\s/g,'\\ ')}`).textContent =
     `🧾 Total Inventario Costeado: ${formatter.format(totalInventarioCosteado)}`;
 
   document.getElementById("totalGlobal").innerText =
-    "💰 TOTAL INVENTARIO ZAPATA: " + new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(totalGlobalInventario);
+    "💰 TOTAL INVENTARIO ZAPATA: " + formatter.format(totalGlobalInventario);
 }
-
-/* =================== FIN DE CAMBIO IMPORTANTE ===================== */
 
 // Enviar mensajes a Telegram (corte automático)
 async function enviarTelegram(texto) {
@@ -309,7 +289,7 @@ async function revisarInventario() {
   const descripciones = {};
   productosSnap.forEach(doc => {
     const d = doc.data();
-    descripciones[doc.id] = d.concepto || "Sin descripción";
+    descripciones[doc.id] = d.concepto || d.Concepto || "Sin descripción";
   });
 
   entradasSnap.forEach(doc => {
@@ -334,7 +314,8 @@ async function revisarInventario() {
     if (inventario[codigo] < 0) {
       hayNegativos = true;
       const conv = conversionPorSKU[codigo];
-      msgNeg += `❗ ${codigo} — ${descripciones[codigo]}\nExistencia: ${inventario[codigo]}${conv ? ` (${(inventario[codigo]/conv).toFixed(2)} tarimas)` : ""}\n\n`;
+      msgNeg += `❗ ${codigo} — ${descripciones[codigo] || ""}\n` +
+                `Existencia: ${inventario[codigo]}${conv ? ` (${(inventario[codigo]/conv).toFixed(2)} tarimas)` : ""}\n\n`;
     }
   });
   if (!hayNegativos) msgNeg += "✅ Sin negativos.\n";
@@ -347,7 +328,7 @@ async function revisarInventario() {
       hayBajo = true;
       const conv = conversionPorSKU[codigo];
       const faltante = Math.max(0, minimo - (inventario[codigo] || 0));
-      msgMin += `⚠️ ${codigo} — ${descripciones[codigo]}\n` +
+      msgMin += `⚠️ ${codigo} — ${descripciones[codigo] || ""}\n` +
                 `Existencia: ${inventario[codigo] || 0}${conv ? ` (${((inventario[codigo] || 0)/conv).toFixed(2)} tarimas)` : ""}\n` +
                 `Mínimo: ${minimo}${conv ? ` (${(minimo/conv).toFixed(2)} tarimas)` : ""}\n` +
                 `Faltante: ${faltante}${conv ? ` (${(faltante/conv).toFixed(2)} tarimas)` : ""}\n\n`;
