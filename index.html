@@ -153,20 +153,21 @@ async function cargarDatos() {
 
 async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
   const productos = {};
-  productosSnap.forEach(doc => {
-    if (codigos.includes(doc.id)) {
-      const base = doc.data()["Costo sin Impuesto"] || 0;
-      const esExento = codigosExentos.includes(doc.id);
-      const costoFinal = esExento ? base : base * 1.16;
-      productos[doc.id] = {
-        descripcion: doc.data().Concepto || "Sin descripción",
-        impuesto: esExento ? "Exento" : "Con IVA",
-        costo: costoFinal,
-        entradas: 0,
-        salidas: 0
-      };
-    }
-  });
+productosSnap.forEach(doc => {
+  if (codigos.includes(doc.id)) {
+    const base = doc.data().costoSinImpuesto || 0;   // ✅ campo correcto
+    const esExento = codigosExentos.includes(doc.id);
+    const costoFinal = esExento ? base : base * 1.16;
+    productos[doc.id] = {
+      descripcion: doc.data().concepto || "Sin descripción",  // ✅ campo correcto
+      impuesto: esExento ? "Exento" : "Con IVA",
+      costo: costoFinal,
+      entradas: 0,
+      salidas: 0
+    };
+  }
+});
+
 
   entradasSnap.forEach(doc => {
     const data = doc.data();
@@ -258,8 +259,9 @@ async function revisarInventario() {
   const inventario = {};
   const descripciones = {};
   productosSnap.forEach(doc => {
-    descripciones[doc.id] = doc.data().Concepto || "Sin descripción";
-  });
+  descripciones[doc.id] = doc.data().concepto || "Sin descripción"; // ✅
+});
+
 
   entradasSnap.forEach(doc => {
     const data = doc.data();
