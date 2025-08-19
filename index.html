@@ -106,40 +106,14 @@ const getFirst = (obj, keys, def=null) => {
 const toKey = v => String(v ?? "").trim();
 
 // Cargar datos de Firestore y renderizar tablas
-async function cargarDatos() {
-  const entradasSnap = await db.collection("almacenes").doc("almacen_zapata").collection("entradas").get();
-  const salidasSnap  = await db.collection("almacenes").doc("almacen_zapata").collection("salidas").get();
-  const productosSnap = await db.collection("productos").get();
+async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false, equivalencias = {}) {
+  const getFirst = (obj, keys, def=null) => {
+    for (const k of keys) if (obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+    return def;
+  };
+  const toKey = v => String(v ?? "").trim();
 
-  // Códigos con movimiento (para la sección SIN CATEGORÍA)
-  const usados = new Set();
-  entradasSnap.forEach(doc => {
-    const data = doc.data();
-    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(it => usados.add(String(it.codigo)));
-  });
-  salidasSnap.forEach(doc => {
-    const data = doc.data();
-    (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(it => usados.add(String(it.codigo)));
-  });
-
-  const codigosTodasLineas = Object.values(lineas).flat();
-  const sinCategoria = [];
-  for (const codigo of usados) if (!codigosTodasLineas.includes(codigo)) sinCategoria.push(codigo);
-
-  // Render por línea
-  for (const [linea, codigos] of Object.entries(lineas)) {
-    await renderTabla(linea, codigos, productosSnap, entradasSnap, salidasSnap);
-  }
-  if (sinCategoria.length > 0) {
-    await renderTabla("SIN CATEGORÍA", sinCategoria, productosSnap, entradasSnap, salidasSnap, true);
-  }
-
-  document.getElementById("loader").style.display = "none";
-}
-
-// Render de cada tabla (robusto: busca por doc.id o por codigoBarra)
-async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidasSnap, mostrarSoloConMovimiento = false) {
-  // Índices de productos
+  // Indexar productos por doc.id y por codigoBarra
   const byId = {};
   const byCB = {};
   productosSnap.forEach(doc => {
@@ -149,12 +123,29 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     if (cb) byCB[cb] = d;
   });
 
-  // Construir mapa de productos para la línea
+  // Construir mapa de productos de la línea
   const productos = {};
   codigos.forEach(codigo => {
-    const key = toKey(codigo);
-    const d = byId[key] || byCB[key];
-    if (!d) return;
+    const k = toKey(codigo);
+
+    // Resolver producto: ID → codigoBarra → equivalencias
+    let d = byId[k] || byCB[k];
+    if (!d && equivalencias[k]) {
+      const dest = toKey(equivalencias[k]);
+      d = byId[dest] || byCB[dest];
+    }
+
+    if (!d) {
+      // No hay ficha en “productos”: pintar fila de todos modos
+      productos[k] = {
+        descripcion: "Sin descripción",
+        impuesto: "Con IVA",
+        costo: 0,
+        entradas: 0,
+        salidas: 0
+      };
+      return;
+    }
 
     const descripcion = getFirst(d, ["concepto","Concepto","descripcion","Descripción","Descripcion","nombre","Nombre"], "Sin descripción");
 
@@ -165,18 +156,17 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
       "mayoreo","medioMayoreo","precioPublico"
     ], 0)) || 0;
 
-    // IVA
+    // IVA / exentos
     let ivaTasa = Number(getFirst(d, ["ivaTasa","iva_tasa"], null));
     const ivaBool = getFirst(d, ["iva","tieneIva","conIva"], null);
     if (ivaTasa === null && (ivaBool === true || ivaBool === "true")) ivaTasa = 0.16;
     if (ivaTasa === null && (ivaBool === false || ivaBool === "false")) ivaTasa = 0;
 
-    const forzarExento = codigosExentos.includes(key);
+    const forzarExento = codigosExentos.includes(k);
     const esExento = forzarExento || ivaTasa === 0;
-
     const costoFinal = esExento ? costoBase : costoBase * (1 + (ivaTasa ?? 0.16));
 
-    productos[key] = {
+    productos[k] = {
       descripcion,
       impuesto: esExento ? "Exento" : "Con IVA",
       costo: isFinite(costoFinal) ? costoFinal : 0,
@@ -185,7 +175,7 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     };
   });
 
-  // Sumar movimientos
+  // Sumar movimientos (solo para códigos de esta línea)
   entradasSnap.forEach(doc => {
     const data = doc.data();
     (Array.isArray(data.articulos) ? data.articulos : [data]).forEach(item => {
@@ -201,7 +191,7 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
     });
   });
 
-  // Filas con/sin movimiento
+  // Preparar filas
   let filas = Object.entries(productos)
     .filter(([_, p]) => (!mostrarSoloConMovimiento || p.entradas !== 0 || p.salidas !== 0));
   if (filas.length === 0) return;
@@ -222,7 +212,7 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
 
   filas.forEach(([codigo, p]) => {
     const inventario = p.entradas - p.salidas;
-    const totalCosteado = nombre === "BOLSA" ? p.costo * inventario * 25 : p.costo * inventario;
+    const totalCosteado = (nombre === "BOLSA") ? p.costo * inventario * 25 : p.costo * inventario;
     totalInventarioCosteado += totalCosteado;
     totalGlobalInventario += totalCosteado;
 
@@ -244,7 +234,6 @@ async function renderTabla(nombre, codigos, productosSnap, entradasSnap, salidas
   wrapper.innerHTML = tablaHTML;
   cont.appendChild(wrapper);
 
-  // Actualizar totales
   wrapper.querySelector(`.total-${nombre.replace(/\s/g,'\\ ')}`).textContent =
     `🧾 Total Inventario Costeado: ${formatter.format(totalInventarioCosteado)}`;
 
