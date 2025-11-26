@@ -14,8 +14,17 @@
  h2{
    color:#00416A;
    font-size:26px;
+   margin-bottom:5px;
+ }
+
+ #totalesBox{
+   text-align:right;
+   font-size:18px;
+   font-weight:bold;
+   color:#00416A;
    margin-bottom:20px;
  }
+
  table{
    width:100%;
    border-collapse:collapse;
@@ -41,12 +50,16 @@
 
 <h2>Existencia Total – Almacén Zapata</h2>
 
+<div id="totalesBox">Calculando…</div>
+
 <table>
 <thead>
    <tr>
      <th>Código</th>
      <th>Descripción</th>
      <th>Existencia</th>
+     <th>Costo s/IVA</th>
+     <th>Total</th>
    </tr>
 </thead>
 
@@ -60,7 +73,7 @@
 // ---------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { 
-  getFirestore, collection, doc, query, where,
+  getFirestore, collection, query, where,
   getDocs, onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -77,6 +90,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const tabla = document.getElementById("tablaExistencia");
+const totalesBox = document.getElementById("totalesBox");
 
 // ---------------------------------------------------------------------
 // VARIABLES
@@ -102,7 +116,7 @@ function normCodigo(cod){
 }
 
 // ---------------------------------------------------------------------
-// 1. PRODUCTOS ACTIVOS
+// 1. PRODUCTOS ACTIVOS + COSTO
 // ---------------------------------------------------------------------
 async function cargarProductos(){
 
@@ -117,7 +131,8 @@ async function cargarProductos(){
 
     productos[codigo] = {
       proveedor: d.proveedor,
-      descripcion: d.concepto || d.descripcion || "-"
+      descripcion: d.concepto || d.descripcion || "-",
+      costo: Number(d.costoSinImpuesto || 0)
     };
   });
 
@@ -223,7 +238,7 @@ function cargarSalidas(){
 }
 
 // ---------------------------------------------------------------------
-// 5. DIBUJAR
+// 5. MOSTRAR INFORMACIÓN
 // ---------------------------------------------------------------------
 function intentarDibujar(){
   if(!productosListos || !baseLista || !entradasListas || !salidasListas) return;
@@ -235,6 +250,8 @@ function dibujar(){
   tabla.innerHTML = "";
 
   let porProveedor = {};
+  let totalPiezas = 0;
+  let totalDinero = 0;
 
   Object.keys(productos).forEach(codigo => {
 
@@ -245,22 +262,36 @@ function dibujar(){
     const sal  = salidasNuevas[codigo] || 0;
 
     const existencia = base + ent - sal;
+    const costo = p.costo;
+    const total = existencia * costo;
+
+    totalPiezas += existencia;
+    totalDinero += total;
 
     if(!porProveedor[p.proveedor]) porProveedor[p.proveedor] = [];
 
     porProveedor[p.proveedor].push({
       codigo,
       descripcion: p.descripcion,
-      existencia
+      existencia,
+      costo,
+      total
     });
 
   });
 
+  // Mostrar totales
+  totalesBox.innerHTML = `
+    Total piezas: <b>${totalPiezas}</b> — Total dinero: 
+    <b>$${totalDinero.toFixed(2)}</b>
+  `;
+
+  // Mostrar tabla
   Object.keys(porProveedor).sort().forEach(prov => {
 
     tabla.innerHTML += `
       <tr>
-        <td colspan="3"
+        <td colspan="5"
             style="background:linear-gradient(to right,#00416A,#0c6cbd);
                    color:white;font-size:20px;font-weight:bold;">
             ${prov}
@@ -277,12 +308,14 @@ function dibujar(){
           <td>${p.codigo}</td>
           <td>${p.descripcion}</td>
           <td class="${p.existencia < 0 ? "negativo" : "positivo"}">${p.existencia}</td>
+          <td>$${p.costo.toFixed(2)}</td>
+          <td>$${p.total.toFixed(2)}</td>
         </tr>
       `;
 
     });
 
-    tabla.innerHTML += `<tr><td colspan="3" style="height:8px;background:#eaeaea;"></td></tr>`;
+    tabla.innerHTML += `<tr><td colspan="5" style="height:8px;background:#eaeaea;"></td></tr>`;
   });
 
 }
