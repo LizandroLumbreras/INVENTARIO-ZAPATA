@@ -295,10 +295,10 @@ function dibujar(){
   });
 
   // Mostrar totales
-  document.getElementById("totalesBox").innerHTML = `
-    Total piezas: <b>${totalPiezas}</b> — Total dinero: 
-    <b>$${totalDinero.toFixed(2)}</b>
-  `;
+document.getElementById("totalesBox").innerHTML = `
+  Total piezas: <b>${totalPiezas.toLocaleString("es-MX")}</b> — 
+  Total dinero: <b>$${totalDinero.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+`;
 
   // Mostrar tabla por proveedor
   Object.keys(porProveedor).sort().forEach(prov => {
