@@ -158,91 +158,80 @@ async function cargarInventarioBase(){
 }
 
 // ---------------------------------------------------------------------
-// 3. ENTRADAS NUEVAS
+// 3 y 4. ENTRADAS Y SALIDAS SE MANTIENEN IGUAL
 // ---------------------------------------------------------------------
 function cargarEntradas(){
-
   const ref = collection(db, "almacenes/almacen_zapata/entradas");
-
   onSnapshot(ref, snap => {
-
     entradasNuevas = {};
-
     snap.forEach(docu => {
       const data = docu.data();
       const fecha = data.fecha?.toDate?.() || new Date(data.fecha);
-
       if(fecha <= fechaCorte) return;
 
       if(Array.isArray(data.productos)){
-        data.productos.forEach(item => {
+        data.productos.forEach(item=>{
           const codigo = normCodigo(item.codigoBarra || item.codigobarras || item.codigo || "");
-          const cant = Number(item.cantidad || 0);
-
-          if(!entradasNuevas[codigo]) entradasNuevas[codigo] = 0;
-          entradasNuevas[codigo] += cant;
+          const cant = Number(item.cantidad||0);
+          if(!entradasNuevas[codigo]) entradasNuevas[codigo]=0;
+          entradasNuevas[codigo]+=cant;
         });
       }
 
       if(Array.isArray(data.conceptos_detalle)){
-        data.conceptos_detalle.forEach(item => {
+        data.conceptos_detalle.forEach(item=>{
           const codigo = normCodigo(item.codigo || item.productoId || "");
-          const cant = Number(item.cantidad || item.cantidadTotal || 0);
-
-          if(!entradasNuevas[codigo]) entradasNuevas[codigo] = 0;
-          entradasNuevas[codigo] += cant;
+          const cant = Number(item.cantidad||item.cantidadTotal||0);
+          if(!entradasNuevas[codigo]) entradasNuevas[codigo]=0;
+          entradasNuevas[codigo]+=cant;
         });
       }
-
     });
-
     entradasListas = true;
     intentarDibujar();
   });
-
 }
 
-// ---------------------------------------------------------------------
-// 4. SALIDAS NUEVAS
-// ---------------------------------------------------------------------
 function cargarSalidas(){
-
   const ref = collection(db, "almacenes/almacen_zapata/salidas1.0");
-
   onSnapshot(ref, snap => {
-
     salidasNuevas = {};
-
     snap.forEach(docu => {
       const data = docu.data();
       const fecha = data.timestamp?.toDate?.() || new Date(data.timestamp);
-
       if(fecha <= fechaCorte) return;
 
       if(Array.isArray(data.articulos)){
-        data.articulos.forEach(item => {
+        data.articulos.forEach(item=>{
           const codigo = normCodigo(item.codigoBarra || item.codigobarra || item.codigo || "");
-          const cant = Number(item.cantidad || 0);
-
-          if(!salidasNuevas[codigo]) salidasNuevas[codigo] = 0;
-          salidasNuevas[codigo] += cant;
+          const cant = Number(item.cantidad||0);
+          if(!salidasNuevas[codigo]) salidasNuevas[codigo]=0;
+          salidasNuevas[codigo]+=cant;
         });
       }
-
     });
-
     salidasListas = true;
     intentarDibujar();
   });
-
 }
 
 // ---------------------------------------------------------------------
-// 5. MOSTRAR INFORMACIÓN
+// 5. MOSTRAR INFORMACIÓN + FILTRO + MULTIPLICADOR 25
 // ---------------------------------------------------------------------
 function intentarDibujar(){
   if(!productosListos || !baseLista || !entradasListas || !salidasListas) return;
   dibujar();
+}
+
+function esBolsaEspecial(desc){
+  desc = desc.toUpperCase();
+  return (
+    desc.includes("BOLSA CAMISETA NEGRA") ||
+    desc.includes("BOLSA CAMISETA POLIPAPEL") ||
+    desc.includes("BOLSA CAMISETA POLISEDA") ||
+    desc.includes("BOLSA NATURAL") ||
+    desc.includes("BOLSA ROLLO")
+  );
 }
 
 function dibujar(){
@@ -262,8 +251,18 @@ function dibujar(){
     const sal  = salidasNuevas[codigo] || 0;
 
     const existencia = base + ent - sal;
-    const costo = p.costo;
-    const total = existencia * costo;
+
+    // ✔ filtro: NO mostrar existencia 0
+    if(existencia === 0) return;
+
+    let costoUnit = p.costo;
+
+    // ✔ multiplicador ×25 para bolsas
+    if(esBolsaEspecial(p.descripcion)){
+      costoUnit = costoUnit * 25;
+    }
+
+    const total = existencia * costoUnit;
 
     totalPiezas += existencia;
     totalDinero += total;
@@ -274,7 +273,7 @@ function dibujar(){
       codigo,
       descripcion: p.descripcion,
       existencia,
-      costo,
+      costo: costoUnit,
       total
     });
 
@@ -286,7 +285,7 @@ function dibujar(){
     <b>$${totalDinero.toFixed(2)}</b>
   `;
 
-  // Mostrar tabla
+  // Mostrar tabla por proveedor
   Object.keys(porProveedor).sort().forEach(prov => {
 
     tabla.innerHTML += `
