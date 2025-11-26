@@ -55,6 +55,9 @@
 
 <script type="module">
 
+// ======================================================
+// FIREBASE
+// ======================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { 
   getFirestore, collection, query, where,
@@ -73,201 +76,177 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const tabla = document.getElementById("tablaExistencia");
+// ======================================================
+// VARIABLES
+// ======================================================
+let productos = {};
+let inventarioBase = {};
+let entradasNuevas = {};
+let salidasNuevas = {};
 
-let inventario = {};     
+let productosListos = false;
+let baseLista = false;
 let entradasListas = false;
-let salidasListas  = false;
+let salidasListas = false;
 
-// ===============================
-// NORMALIZADORES
-// ===============================
-function normCodigo(cod) {
+// Fecha corte igual a tu sistema
+const fechaCorte = new Date("2025-11-24T00:00:00");
+
+// ======================================================
+// NORMALIZADOR
+// ======================================================
+function normCodigo(cod){
   if (!cod) return "";
-  cod = cod.toString().trim();
-  if (cod.length === 12) return cod;
-  return cod.padStart(12, "0");
-}
-
-function obtenerCantidad(obj) {
-  return Number(obj.cantidad || 0);
-}
-
-function obtenerCodigo(obj) {
-  return (
-    obj.codigoBarra ||
-    obj.codigobarra ||
-    obj.codigoBarras ||
-    obj.codigo ||
-    obj.productoID ||
-    obj.productoId ||
-    ""
-  ).toString().trim();
+  return cod.toString().trim().padStart(12, "0");
 }
 
 // ======================================================
-// 1. LEER SOLO PRODUCTOS ACTIVOS CON PROVEEDOR
+// 1) Cargar productos activos
 // ======================================================
-async function cargarProductosProveedor() {
-
+async function cargarProductos(){
   const q = query(collection(db, "productos"), where("activo", "==", true));
   const snap = await getDocs(q);
 
-  snap.forEach(doc => {
-    const d = doc.data();
-    if (!d.proveedor || d.proveedor.toString().trim() === "") return;
+  snap.forEach(docu=>{
+    const d = docu.data();
 
     const codigo = normCodigo(d.codigoBarra || d.codigo || "");
-
-    inventario[codigo] = {
-      proveedor: d.proveedor,
+    productos[codigo] = {
       descripcion: d.concepto || d.descripcion || "-",
-      entradas: 0,
-      salidas: 0
+      proveedor: d.proveedor || "-"
     };
   });
+
+  productosListos = true;
+  intentarMostrar();
 }
 
 // ======================================================
-// 2. PROCESAR ENTRADAS
+// 2) Cargar inventario_base
 // ======================================================
-function cargarEntradas() {
+async function cargarInventarioBase(){
+  const snap = await getDocs(collection(db, "almacenes/almacen_zapata/inventario_base"));
+
+  snap.forEach(docu => {
+    const codigo = normCodigo(docu.id);
+    inventarioBase[codigo] = docu.data().existencia || 0;
+  });
+
+  baseLista = true;
+  intentarMostrar();
+}
+
+// ======================================================
+// 3) Entradas nuevas
+// ======================================================
+function cargarEntradas(){
   const ref = collection(db, "almacenes/almacen_zapata/entradas");
 
   onSnapshot(ref, snap => {
+    entradasNuevas = {};
+
     snap.forEach(docu => {
       const data = docu.data();
 
-      if (Array.isArray(data.conceptos_detalle)) {
-        data.conceptos_detalle.forEach(item => {
-          const codigo = normCodigo(item.codigo || item.productoId || "");
-          const cantidad = Number(item.cantidad || item.cantidadTotal || 0);
-          if (inventario[codigo]) inventario[codigo].entradas += cantidad;
+      const fecha = data.fecha?.toDate?.() || new Date(data.fecha);
+      if (fecha <= fechaCorte) return;
+
+      if (Array.isArray(data.productos)){
+        data.productos.forEach(item=>{
+          const codigo = normCodigo(item.codigoBarra || item.codigobarras || item.codigo || "");
+          const cant = Number(item.cantidad || 0);
+
+          entradasNuevas[codigo] = (entradasNuevas[codigo] || 0) + cant;
         });
       }
 
-      if (Array.isArray(data.productos)) {
-        data.productos.forEach(item => {
-          const codigo = normCodigo(
-            item.codigoBarra ||
-            item.codigobarras ||
-            item.codigo ||
-            item.productoId ||
-            item.productoID ||
-            ""
-          );
-          const cantidad = Number(item.cantidad || 0);
-          if (inventario[codigo]) inventario[codigo].entradas += cantidad;
+      if (Array.isArray(data.conceptos_detalle)){
+        data.conceptos_detalle.forEach(item=>{
+          const codigo = normCodigo(item.codigo || item.productoId || "");
+          const cant = Number(item.cantidad || item.cantidadTotal || 0);
+
+          entradasNuevas[codigo] = (entradasNuevas[codigo] || 0) + cant;
         });
       }
 
     });
 
     entradasListas = true;
-    if (entradasListas && salidasListas) dibujar();
+    intentarMostrar();
   });
 }
 
 // ======================================================
-// 3. PROCESAR SALIDAS
+// 4) Salidas nuevas
 // ======================================================
-const fechaMinimaSalidas = new Date("2025-11-24T00:00:00");
-
-function cargarSalidas() {
+function cargarSalidas(){
   const ref = collection(db, "almacenes/almacen_zapata/salidas1.0");
 
   onSnapshot(ref, snap => {
+    salidasNuevas = {};
 
     snap.forEach(docu => {
       const data = docu.data();
-      if (!data.timestamp) return;
 
-      let fechaSalida;
-      if (data.timestamp.toDate) fechaSalida = data.timestamp.toDate();
-      else fechaSalida = new Date(data.timestamp);
+      const fecha = data.timestamp?.toDate?.() || new Date(data.timestamp);
+      if (fecha <= fechaCorte) return;
 
-      if (fechaSalida < fechaMinimaSalidas) return;
+      if (Array.isArray(data.articulos)){
+        data.articulos.forEach(item=>{
+          const codigo = normCodigo(item.codigoBarra || item.codigobarras || item.codigo || "");
+          const cant = Number(item.cantidad || 0);
 
-      if (Array.isArray(data.articulos)) {
-        data.articulos.forEach(item => {
-
-          const cod = normCodigo(obtenerCodigo(item));
-          const cant = obtenerCantidad(item);
-
-          if (inventario[cod]) {
-            inventario[cod].salidas += cant;
-          }
-
+          salidasNuevas[codigo] = (salidasNuevas[codigo] || 0) + cant;
         });
       }
 
     });
 
     salidasListas = true;
-    if (entradasListas && salidasListas) dibujar();
+    intentarMostrar();
   });
 }
 
 // ======================================================
-// 4. DIBUJAR TABLA SOLO EXISTENCIA
+// Mostrar tabla cuando todo esté cargado
 // ======================================================
-function dibujar() {
+function intentarMostrar(){
+  if (!productosListos || !baseLista || !entradasListas || !salidasListas) return;
+  dibujar();
+}
+
+// ======================================================
+// DIBUJAR EXISTENCIA REAL
+// ======================================================
+function dibujar(){
+
+  const tabla = document.getElementById("tablaExistencia");
   tabla.innerHTML = "";
 
-  const porProveedor = {};
+  Object.keys(productos).sort().forEach(codigo => {
 
-  Object.keys(inventario).forEach(cod => {
-    const p = inventario[cod];
-    if (!porProveedor[p.proveedor]) porProveedor[p.proveedor] = [];
-    porProveedor[p.proveedor].push({ codigo: cod, ...p });
-  });
+    const base = inventarioBase[codigo] || 0;
+    const ent  = entradasNuevas[codigo] || 0;
+    const sal  = salidasNuevas[codigo] || 0;
 
-  const proveedoresOrdenados = Object.keys(porProveedor).sort();
-
-  proveedoresOrdenados.forEach(prov => {
+    const existencia = base + ent - sal;
 
     tabla.innerHTML += `
       <tr>
-        <td colspan="3" 
-            style="
-              background: linear-gradient(to right, #00416A, #0c6cbd);
-              color: white;
-              font-size:20px;
-              font-weight:bold;
-              padding:14px;
-              border-top: 4px solid #003354;
-            ">
-            ${prov}
-        </td>
+        <td>${codigo}</td>
+        <td>${productos[codigo].descripcion}</td>
+        <td class="${existencia < 0 ? "negativo" : "positivo"}">${existencia}</td>
       </tr>
     `;
-
-    porProveedor[prov].sort((a,b) => a.codigo.localeCompare(b.codigo));
-
-    porProveedor[prov].forEach(p => {
-
-      const existencia = p.entradas - p.salidas;
-      const clase = existencia < 0 ? "negativo" : "positivo";
-
-      tabla.innerHTML += `
-        <tr>
-          <td>${p.codigo}</td>
-          <td>${p.descripcion}</td>
-          <td class="${clase}">${existencia}</td>
-        </tr>
-      `;
-    });
-
-    tabla.innerHTML += `
-      <tr><td colspan="3" style="height:8px; background:#eaeaea;"></td></tr>
-    `;
   });
+
 }
 
-// ======================================================
+//
 // EJECUCIÓN
-// ======================================================
-await cargarProductosProveedor();
+//
+await cargarProductos();
+await cargarInventarioBase();
 cargarEntradas();
 cargarSalidas();
 
