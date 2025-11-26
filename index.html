@@ -68,9 +68,6 @@
 
 <script type="module">
 
-// ---------------------------------------------------------------------
-// FIREBASE
-// ---------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { 
   getFirestore, collection, query, where,
@@ -89,12 +86,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const tabla = document.getElementById("tablaExistencia");
-const totalesBox = document.getElementById("totalesBox");
-
-// ---------------------------------------------------------------------
+// =================================================================
 // VARIABLES
-// ---------------------------------------------------------------------
+// =================================================================
 let productos = {};
 let inventarioBase = {};
 let entradasNuevas = {};
@@ -107,17 +101,34 @@ let salidasListas = false;
 
 const fechaCorte = new Date("2025-11-24T00:00:00");
 
-// ---------------------------------------------------------------------
+// =================================================================
 // NORMALIZADOR
-// ---------------------------------------------------------------------
+// =================================================================
 function normCodigo(cod){
   if(!cod) return "";
   return cod.toString().trim().padStart(12, "0");
 }
 
-// ---------------------------------------------------------------------
-// 1. PRODUCTOS ACTIVOS + COSTO
-// ---------------------------------------------------------------------
+// =================================================================
+// 👉 DETECTOR DE BOLSAS (USANDO PROVEEDOR)
+// =================================================================
+function esBolsaEspecial(proveedor){
+  if(!proveedor) return false;
+
+  const p = proveedor.toUpperCase();
+
+  return (
+    p.includes("BOLSA CAMISETA NEGRA") ||
+    p.includes("BOLSA CAMISETA POLIPAPEL") ||
+    p.includes("BOLSA CAMISETA POLISEDA") ||
+    p.includes("BOLSA NATURAL") ||
+    p.includes("BOLSA ROLLO")
+  );
+}
+
+// =================================================================
+// 1. CARGAR PRODUCTOS ACTIVOS
+// =================================================================
 async function cargarProductos(){
 
   const q = query(collection(db, "productos"), where("activo", "==", true));
@@ -125,6 +136,7 @@ async function cargarProductos(){
 
   snap.forEach(docu => {
     const d = docu.data();
+
     if(!d.proveedor || d.proveedor.trim() === "") return;
 
     const codigo = normCodigo(d.codigoBarra || d.codigo || "");
@@ -140,9 +152,9 @@ async function cargarProductos(){
   intentarDibujar();
 }
 
-// ---------------------------------------------------------------------
-// 2. INVENTARIO BASE
-// ---------------------------------------------------------------------
+// =================================================================
+// 2. CARGAR INVENTARIO BASE
+// =================================================================
 async function cargarInventarioBase(){
 
   const ref = collection(db, "almacenes/almacen_zapata/inventario_base");
@@ -157,85 +169,90 @@ async function cargarInventarioBase(){
   intentarDibujar();
 }
 
-// ---------------------------------------------------------------------
-// 3 y 4. ENTRADAS Y SALIDAS SE MANTIENEN IGUAL
-// ---------------------------------------------------------------------
+// =================================================================
+// 3. CARGAR ENTRADAS NUEVAS
+// =================================================================
 function cargarEntradas(){
+
   const ref = collection(db, "almacenes/almacen_zapata/entradas");
+
   onSnapshot(ref, snap => {
+
     entradasNuevas = {};
+
     snap.forEach(docu => {
       const data = docu.data();
       const fecha = data.fecha?.toDate?.() || new Date(data.fecha);
+
       if(fecha <= fechaCorte) return;
 
       if(Array.isArray(data.productos)){
-        data.productos.forEach(item=>{
+        data.productos.forEach(item => {
           const codigo = normCodigo(item.codigoBarra || item.codigobarras || item.codigo || "");
-          const cant = Number(item.cantidad||0);
-          if(!entradasNuevas[codigo]) entradasNuevas[codigo]=0;
-          entradasNuevas[codigo]+=cant;
+          const cant = Number(item.cantidad || 0);
+          entradasNuevas[codigo] = (entradasNuevas[codigo] || 0) + cant;
         });
       }
 
       if(Array.isArray(data.conceptos_detalle)){
-        data.conceptos_detalle.forEach(item=>{
+        data.conceptos_detalle.forEach(item => {
           const codigo = normCodigo(item.codigo || item.productoId || "");
-          const cant = Number(item.cantidad||item.cantidadTotal||0);
-          if(!entradasNuevas[codigo]) entradasNuevas[codigo]=0;
-          entradasNuevas[codigo]+=cant;
+          const cant = Number(item.cantidad || item.cantidadTotal || 0);
+          entradasNuevas[codigo] = (entradasNuevas[codigo] || 0) + cant;
         });
       }
+
     });
+
     entradasListas = true;
     intentarDibujar();
   });
 }
 
+// =================================================================
+// 4. CARGAR SALIDAS NUEVAS
+// =================================================================
 function cargarSalidas(){
+
   const ref = collection(db, "almacenes/almacen_zapata/salidas1.0");
+
   onSnapshot(ref, snap => {
+
     salidasNuevas = {};
+
     snap.forEach(docu => {
       const data = docu.data();
       const fecha = data.timestamp?.toDate?.() || new Date(data.timestamp);
+
       if(fecha <= fechaCorte) return;
 
       if(Array.isArray(data.articulos)){
-        data.articulos.forEach(item=>{
+        data.articulos.forEach(item => {
           const codigo = normCodigo(item.codigoBarra || item.codigobarra || item.codigo || "");
-          const cant = Number(item.cantidad||0);
-          if(!salidasNuevas[codigo]) salidasNuevas[codigo]=0;
-          salidasNuevas[codigo]+=cant;
+          const cant = Number(item.cantidad || 0);
+          salidasNuevas[codigo] = (salidasNuevas[codigo] || 0) + cant;
         });
       }
+
     });
+
     salidasListas = true;
     intentarDibujar();
   });
 }
 
-// ---------------------------------------------------------------------
-// 5. MOSTRAR INFORMACIÓN + FILTRO + MULTIPLICADOR 25
-// ---------------------------------------------------------------------
+// =================================================================
+// 5. DIBUJAR TABLA
+// =================================================================
 function intentarDibujar(){
-  if(!productosListos || !baseLista || !entradasListas || !salidasListas) return;
-  dibujar();
-}
-
-function esBolsaEspecial(desc){
-  desc = desc.toUpperCase();
-  return (
-    desc.includes("BOLSA CAMISETA NEGRA") ||
-    desc.includes("BOLSA CAMISETA POLIPAPEL") ||
-    desc.includes("BOLSA CAMISETA POLISEDA") ||
-    desc.includes("BOLSA NATURAL") ||
-    desc.includes("BOLSA ROLLO")
-  );
+  if(productosListos && baseLista && entradasListas && salidasListas){
+    dibujar();
+  }
 }
 
 function dibujar(){
 
+  const tabla = document.getElementById("tablaExistencia");
   tabla.innerHTML = "";
 
   let porProveedor = {};
@@ -245,24 +262,22 @@ function dibujar(){
   Object.keys(productos).forEach(codigo => {
 
     const p = productos[codigo];
-
     const base = inventarioBase[codigo] || 0;
-    const ent  = entradasNuevas[codigo] || 0;
-    const sal  = salidasNuevas[codigo] || 0;
+    const ent = entradasNuevas[codigo] || 0;
+    const sal = salidasNuevas[codigo] || 0;
 
     const existencia = base + ent - sal;
 
-    // ✔ filtro: NO mostrar existencia 0
+    // ❌ NO mostrar productos con existencia = 0
     if(existencia === 0) return;
 
-    let costoUnit = p.costo;
-
-    // ✔ multiplicador ×25 para bolsas
-    if(esBolsaEspecial(p.descripcion)){
-      costoUnit = costoUnit * 25;
+    // costo corregido
+    let costo = p.costo;
+    if(esBolsaEspecial(p.proveedor)){
+      costo = costo * 25;
     }
 
-    const total = existencia * costoUnit;
+    const total = existencia * costo;
 
     totalPiezas += existencia;
     totalDinero += total;
@@ -273,14 +288,14 @@ function dibujar(){
       codigo,
       descripcion: p.descripcion,
       existencia,
-      costo: costoUnit,
+      costo,
       total
     });
 
   });
 
   // Mostrar totales
-  totalesBox.innerHTML = `
+  document.getElementById("totalesBox").innerHTML = `
     Total piezas: <b>${totalPiezas}</b> — Total dinero: 
     <b>$${totalDinero.toFixed(2)}</b>
   `;
@@ -301,7 +316,6 @@ function dibujar(){
     porProveedor[prov].sort((a,b)=> a.codigo.localeCompare(b.codigo));
 
     porProveedor[prov].forEach(p => {
-
       tabla.innerHTML += `
         <tr>
           <td>${p.codigo}</td>
@@ -311,17 +325,15 @@ function dibujar(){
           <td>$${p.total.toFixed(2)}</td>
         </tr>
       `;
-
     });
 
     tabla.innerHTML += `<tr><td colspan="5" style="height:8px;background:#eaeaea;"></td></tr>`;
   });
-
 }
 
-// ---------------------------------------------------------------------
-// EJECUTAR
-// ---------------------------------------------------------------------
+// =================================================================
+// EJECUCIÓN
+// =================================================================
 await cargarProductos();
 await cargarInventarioBase();
 cargarEntradas();
