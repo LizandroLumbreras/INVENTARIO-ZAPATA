@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Inventario – Almacén Zapata</title>
+<title>Inventario Costeado – Almacén Zapata</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
@@ -76,14 +76,12 @@ const db = getFirestore(app);
 
 /* ================= VARIABLES ================= */
 let productos = {};
-let base = {};
+let iniciales = {};
+let fechasAjuste = {};
 let entradas = {};
 let salidas = {};
 
-let okP=false, okB=false, okE=false, okS=false;
-
-/* MISMA FECHA DE CORTE */
-const fechaCorte = new Date("2025-11-24T00:00:00");
+let okP=false, okA=false, okE=false, okS=false;
 
 /* ================= UTIL ================= */
 function norm(c){
@@ -111,76 +109,69 @@ async function cargarProductos(){
   intentar();
 }
 
-/* ================= 2. INVENTARIO BASE ================= */
-async function cargarBase(){
-  const snap = await getDocs(
-    collection(db,"almacenes/almacen_zapata/inventario_base")
-  );
+/* ================= 2. AJUSTES (INVENTARIO INICIAL) ================= */
+onSnapshot(collection(db,"almacenes/almacen_zapata/ajustes"), s=>{
+  iniciales = {};
+  fechasAjuste = {};
 
-  snap.forEach(d=>{
-    base[norm(d.id)] = Number(d.data().existencia || 0);
+  s.forEach(d=>{
+    const x = d.data();
+    const c = norm(x.codigo);
+    iniciales[c] = Number(x.inventarioInicial || 0);
+    fechasAjuste[c] = x.fecha?.toDate?.() || new Date(x.fecha);
   });
 
-  okB=true;
+  okA=true;
   intentar();
-}
+});
 
-/* ================= 3. ENTRADAS ================= */
-function cargarEntradas(){
-  onSnapshot(
-    collection(db,"almacenes/almacen_zapata/entradas"),
-    snap=>{
-      entradas={};
+/* ================= 3. ENTRADAS POST AJUSTE ================= */
+onSnapshot(collection(db,"almacenes/almacen_zapata/entradas"), s=>{
+  entradas = {};
 
-      snap.forEach(d=>{
-        const x=d.data();
-        const f = x.fecha?.toDate?.() || new Date(x.fecha);
-        if(f<=fechaCorte) return;
+  s.forEach(d=>{
+    const x=d.data();
+    const f = x.fecha?.toDate?.() || new Date(x.fecha);
 
-        (x.productos||[]).forEach(i=>{
-          const c=norm(i.codigoBarra||i.codigobarras||i.codigo);
-          entradas[c]=(entradas[c]||0)+Number(i.cantidad||0);
-        });
+    (x.productos||[]).forEach(i=>{
+      const c=norm(i.codigoBarra||i.codigobarras||i.codigo);
+      if(fechasAjuste[c] && f <= fechasAjuste[c]) return;
+      entradas[c]=(entradas[c]||0)+Number(i.cantidad||0);
+    });
 
-        (x.conceptos_detalle||[]).forEach(i=>{
-          const c=norm(i.codigo||i.productoId);
-          entradas[c]=(entradas[c]||0)+Number(i.cantidad||0);
-        });
-      });
+    (x.conceptos_detalle||[]).forEach(i=>{
+      const c=norm(i.codigo||i.productoId);
+      if(fechasAjuste[c] && f <= fechasAjuste[c]) return;
+      entradas[c]=(entradas[c]||0)+Number(i.cantidad||0);
+    });
+  });
 
-      okE=true;
-      intentar();
-    }
-  );
-}
+  okE=true;
+  intentar();
+});
 
-/* ================= 4. SALIDAS ================= */
-function cargarSalidas(){
-  onSnapshot(
-    collection(db,"almacenes/almacen_zapata/salidas1.0"),
-    snap=>{
-      salidas={};
+/* ================= 4. SALIDAS POST AJUSTE ================= */
+onSnapshot(collection(db,"almacenes/almacen_zapata/salidas1.0"), s=>{
+  salidas = {};
 
-      snap.forEach(d=>{
-        const x=d.data();
-        const f = x.timestamp?.toDate?.() || new Date(x.timestamp);
-        if(f<=fechaCorte) return;
+  s.forEach(d=>{
+    const x=d.data();
+    const f = x.timestamp?.toDate?.() || new Date(x.timestamp);
 
-        (x.articulos||[]).forEach(i=>{
-          const c=norm(i.codigoBarra||i.codigobarra||i.codigo);
-          salidas[c]=(salidas[c]||0)+Number(i.cantidad||0);
-        });
-      });
+    (x.articulos||[]).forEach(i=>{
+      const c=norm(i.codigoBarra||i.codigobarra||i.codigo);
+      if(fechasAjuste[c] && f <= fechasAjuste[c]) return;
+      salidas[c]=(salidas[c]||0)+Number(i.cantidad||0);
+    });
+  });
 
-      okS=true;
-      intentar();
-    }
-  );
-}
+  okS=true;
+  intentar();
+});
 
 /* ================= DIBUJAR ================= */
 function intentar(){
-  if(okP && okB && okE && okS){
+  if(okP && okA && okE && okS){
     dibujar();
   }
 }
@@ -193,15 +184,22 @@ function dibujar(){
 
   Object.keys(productos).forEach(c=>{
     const p=productos[c];
-    const existencia=(base[c]||0)+(entradas[c]||0)-(salidas[c]||0);
+    const existencia =
+      (iniciales[c] || 0)
+    + (entradas[c] || 0)
+    - (salidas[c] || 0);
 
-    if(existencia===0) return;
+    if(existencia === 0) return;
 
     const total = existencia * p.costo;
 
     if(!porProveedor[p.proveedor]) porProveedor[p.proveedor]=[];
     porProveedor[p.proveedor].push({
-      c, d:p.descripcion, e:existencia, cost:p.costo, tot:total
+      c,
+      d:p.descripcion,
+      e:existencia,
+      cost:p.costo,
+      tot:total
     });
   });
 
@@ -225,9 +223,6 @@ function dibujar(){
 
 /* ================= INIT ================= */
 await cargarProductos();
-await cargarBase();
-cargarEntradas();
-cargarSalidas();
 </script>
 
 </body>
