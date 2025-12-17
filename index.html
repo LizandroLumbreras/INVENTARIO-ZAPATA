@@ -2,343 +2,232 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Existencia – Almacén Zapata (COSTEADO)</title>
+<title>Inventario – Almacén Zapata</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
- body{
-   font-family: Arial, sans-serif;
-   background:#f4f4f4;
-   padding:20px;
- }
- h2{
-   color:#00416A;
-   font-size:26px;
-   margin-bottom:5px;
- }
-
- #totalesBox{
-   text-align:right;
-   font-size:18px;
-   font-weight:bold;
-   color:#00416A;
-   margin-bottom:20px;
- }
-
- table{
-   width:100%;
-   border-collapse:collapse;
-   background:white;
-   margin-top:15px;
- }
- th,td{
-   border:1px solid #ccc;
-   padding:10px;
-   text-align:center;
-   font-size:15px;
- }
- th{
-   background:#00416A;
-   color:white;
- }
- .positivo{ color:green; font-weight:bold; }
- .negativo{ color:red; font-weight:bold; }
+body{
+  font-family: Arial, sans-serif;
+  background:#f4f4f4;
+  padding:20px;
+}
+h2{
+  color:#00416A;
+  text-align:center;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:white;
+}
+th,td{
+  border:1px solid #ccc;
+  padding:8px;
+  text-align:center;
+  font-size:14px;
+}
+th{
+  background:#00416A;
+  color:white;
+}
+.proveedor{
+  background:linear-gradient(to right,#00416A,#0c6cbd);
+  color:white;
+  font-weight:bold;
+  font-size:16px;
+}
+.positivo{color:green;font-weight:bold;}
+.negativo{color:red;font-weight:bold;}
 </style>
 </head>
 
 <body>
 
-<h2>Existencia Total – Almacén Zapata (COSTEADO SIN IVA)</h2>
-
-<div id="totalesBox">Calculando…</div>
+<h2>Inventario Costeado – Almacén Zapata</h2>
 
 <table>
 <thead>
-   <tr>
-     <th>Código</th>
-     <th>Descripción</th>
-     <th>Existencia</th>
-     <th>Costo s/IVA</th>
-     <th>Total</th>
-   </tr>
+<tr>
+  <th>Código</th>
+  <th>Descripción</th>
+  <th>Inventario</th>
+  <th>Costo s/IVA</th>
+  <th>Total</th>
+</tr>
 </thead>
-
-<tbody id="tablaExistencia"></tbody>
+<tbody id="tabla"></tbody>
 </table>
 
 <script type="module">
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { 
+import {
   getFirestore, collection, query, where,
   getDocs, onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
   apiKey: "AIzaSyCK5nb6u2CGRJ8AB1aPlRn54b97bdeAFeM",
   authDomain: "inventariopv-643f1.firebaseapp.com",
   projectId: "inventariopv-643f1",
-  storageBucket: "inventariopv-643f1.firebasestorage.app",
-  messagingSenderId: "96242533231",
-  appId: "1:96242533231:web:aae75a18fbaf9840529e9a"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// =================================================================
-// VARIABLES
-// =================================================================
+/* ================= VARIABLES ================= */
 let productos = {};
-let inventarioBase = {};
-let entradasNuevas = {};
-let salidasNuevas = {};
+let base = {};
+let entradas = {};
+let salidas = {};
 
-let productosListos = false;
-let baseLista = false;
-let entradasListas = false;
-let salidasListas = false;
+let okP=false, okB=false, okE=false, okS=false;
 
+/* MISMA FECHA DE CORTE */
 const fechaCorte = new Date("2025-11-24T00:00:00");
 
-// =================================================================
-// NORMALIZADOR
-// =================================================================
-function normCodigo(cod){
-  if(!cod) return "";
-  return cod.toString().trim().padStart(12, "0");
+/* ================= UTIL ================= */
+function norm(c){
+  return (c||"").toString().trim().padStart(12,"0");
 }
 
-// =================================================================
-// 👉 DETECTOR DE BOLSAS (USANDO PROVEEDOR)
-// =================================================================
-function esBolsaEspecial(proveedor){
-  if(!proveedor) return false;
-
-  const p = proveedor.toUpperCase();
-
-  return (
-    p.includes("BOLSA CAMISETA NEGRA") ||
-    p.includes("BOLSA CAMISETA POLIPAPEL") ||
-    p.includes("BOLSA CAMISETA POLISEDA") ||
-    p.includes("BOLSA NATURAL") ||
-    p.includes("BOLSA ROLLO")
-  );
-}
-
-// =================================================================
-// 1. CARGAR PRODUCTOS ACTIVOS
-// =================================================================
+/* ================= 1. PRODUCTOS ACTIVOS ================= */
 async function cargarProductos(){
-
-  const q = query(collection(db, "productos"), where("activo", "==", true));
+  const q = query(collection(db,"productos"), where("activo","==",true));
   const snap = await getDocs(q);
 
-  snap.forEach(docu => {
-    const d = docu.data();
+  snap.forEach(d=>{
+    const x=d.data();
+    if(!x.proveedor) return;
 
-    if(!d.proveedor || d.proveedor.trim() === "") return;
-
-    const codigo = normCodigo(d.codigoBarra || d.codigo || "");
-
-    productos[codigo] = {
-      proveedor: d.proveedor,
-      descripcion: d.concepto || d.descripcion || "-",
-      costo: Number(d.costoSinImpuesto || 0)
+    const c = norm(x.codigoBarra || x.codigo);
+    productos[c] = {
+      descripcion: x.concepto || x.descripcion || "-",
+      proveedor: x.proveedor,
+      costo: Number(x.costoSinImpuesto || 0)
     };
   });
 
-  productosListos = true;
-  intentarDibujar();
+  okP=true;
+  intentar();
 }
 
-// =================================================================
-// 2. CARGAR INVENTARIO BASE
-// =================================================================
-async function cargarInventarioBase(){
+/* ================= 2. INVENTARIO BASE ================= */
+async function cargarBase(){
+  const snap = await getDocs(
+    collection(db,"almacenes/almacen_zapata/inventario_base")
+  );
 
-  const ref = collection(db, "almacenes/almacen_zapata/inventario_base");
-  const snap = await getDocs(ref);
-
-  snap.forEach(docu => {
-    const codigo = normCodigo(docu.id);
-    inventarioBase[codigo] = docu.data().existencia || 0;
+  snap.forEach(d=>{
+    base[norm(d.id)] = Number(d.data().existencia || 0);
   });
 
-  baseLista = true;
-  intentarDibujar();
+  okB=true;
+  intentar();
 }
 
-// =================================================================
-// 3. CARGAR ENTRADAS NUEVAS
-// =================================================================
+/* ================= 3. ENTRADAS ================= */
 function cargarEntradas(){
+  onSnapshot(
+    collection(db,"almacenes/almacen_zapata/entradas"),
+    snap=>{
+      entradas={};
 
-  const ref = collection(db, "almacenes/almacen_zapata/entradas");
+      snap.forEach(d=>{
+        const x=d.data();
+        const f = x.fecha?.toDate?.() || new Date(x.fecha);
+        if(f<=fechaCorte) return;
 
-  onSnapshot(ref, snap => {
-
-    entradasNuevas = {};
-
-    snap.forEach(docu => {
-      const data = docu.data();
-      const fecha = data.fecha?.toDate?.() || new Date(data.fecha);
-
-      if(fecha <= fechaCorte) return;
-
-      if(Array.isArray(data.productos)){
-        data.productos.forEach(item => {
-          const codigo = normCodigo(item.codigoBarra || item.codigobarras || item.codigo || "");
-          const cant = Number(item.cantidad || 0);
-          entradasNuevas[codigo] = (entradasNuevas[codigo] || 0) + cant;
+        (x.productos||[]).forEach(i=>{
+          const c=norm(i.codigoBarra||i.codigobarras||i.codigo);
+          entradas[c]=(entradas[c]||0)+Number(i.cantidad||0);
         });
-      }
 
-      if(Array.isArray(data.conceptos_detalle)){
-        data.conceptos_detalle.forEach(item => {
-          const codigo = normCodigo(item.codigo || item.productoId || "");
-          const cant = Number(item.cantidad || item.cantidadTotal || 0);
-          entradasNuevas[codigo] = (entradasNuevas[codigo] || 0) + cant;
+        (x.conceptos_detalle||[]).forEach(i=>{
+          const c=norm(i.codigo||i.productoId);
+          entradas[c]=(entradas[c]||0)+Number(i.cantidad||0);
         });
-      }
+      });
 
-    });
-
-    entradasListas = true;
-    intentarDibujar();
-  });
+      okE=true;
+      intentar();
+    }
+  );
 }
 
-// =================================================================
-// 4. CARGAR SALIDAS NUEVAS
-// =================================================================
+/* ================= 4. SALIDAS ================= */
 function cargarSalidas(){
+  onSnapshot(
+    collection(db,"almacenes/almacen_zapata/salidas1.0"),
+    snap=>{
+      salidas={};
 
-  const ref = collection(db, "almacenes/almacen_zapata/salidas1.0");
+      snap.forEach(d=>{
+        const x=d.data();
+        const f = x.timestamp?.toDate?.() || new Date(x.timestamp);
+        if(f<=fechaCorte) return;
 
-  onSnapshot(ref, snap => {
-
-    salidasNuevas = {};
-
-    snap.forEach(docu => {
-      const data = docu.data();
-      const fecha = data.timestamp?.toDate?.() || new Date(data.timestamp);
-
-      if(fecha <= fechaCorte) return;
-
-      if(Array.isArray(data.articulos)){
-        data.articulos.forEach(item => {
-          const codigo = normCodigo(item.codigoBarra || item.codigobarra || item.codigo || "");
-          const cant = Number(item.cantidad || 0);
-          salidasNuevas[codigo] = (salidasNuevas[codigo] || 0) + cant;
+        (x.articulos||[]).forEach(i=>{
+          const c=norm(i.codigoBarra||i.codigobarra||i.codigo);
+          salidas[c]=(salidas[c]||0)+Number(i.cantidad||0);
         });
-      }
+      });
 
-    });
-
-    salidasListas = true;
-    intentarDibujar();
-  });
+      okS=true;
+      intentar();
+    }
+  );
 }
 
-// =================================================================
-// 5. DIBUJAR TABLA
-// =================================================================
-function intentarDibujar(){
-  if(productosListos && baseLista && entradasListas && salidasListas){
+/* ================= DIBUJAR ================= */
+function intentar(){
+  if(okP && okB && okE && okS){
     dibujar();
   }
 }
 
 function dibujar(){
+  const t=document.getElementById("tabla");
+  t.innerHTML="";
 
-  const tabla = document.getElementById("tablaExistencia");
-  tabla.innerHTML = "";
+  const porProveedor={};
 
-  let porProveedor = {};
-  let totalPiezas = 0;
-  let totalDinero = 0;
+  Object.keys(productos).forEach(c=>{
+    const p=productos[c];
+    const existencia=(base[c]||0)+(entradas[c]||0)-(salidas[c]||0);
 
-  Object.keys(productos).forEach(codigo => {
+    if(existencia===0) return;
 
-    const p = productos[codigo];
-    const base = inventarioBase[codigo] || 0;
-    const ent = entradasNuevas[codigo] || 0;
-    const sal = salidasNuevas[codigo] || 0;
+    const total = existencia * p.costo;
 
-    const existencia = base + ent - sal;
-
-    // ❌ NO mostrar productos con existencia = 0
-    if(existencia === 0) return;
-
-    // costo corregido
-    let costo = p.costo;
-    if(esBolsaEspecial(p.proveedor)){
-      costo = costo * 25;
-    }
-
-    const total = existencia * costo;
-
-    totalPiezas += existencia;
-    totalDinero += total;
-
-    if(!porProveedor[p.proveedor]) porProveedor[p.proveedor] = [];
-
+    if(!porProveedor[p.proveedor]) porProveedor[p.proveedor]=[];
     porProveedor[p.proveedor].push({
-      codigo,
-      descripcion: p.descripcion,
-      existencia,
-      costo,
-      total
+      c, d:p.descripcion, e:existencia, cost:p.costo, tot:total
     });
-
   });
 
-  // Mostrar totales
-document.getElementById("totalesBox").innerHTML = `
-  Total piezas: <b>${totalPiezas.toLocaleString("es-MX")}</b> — 
-  Total dinero: <b>$${totalDinero.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
-`;
+  Object.keys(porProveedor).sort().forEach(prov=>{
+    t.innerHTML+=`<tr class="proveedor"><td colspan="5">${prov}</td></tr>`;
 
-  // Mostrar tabla por proveedor
-  Object.keys(porProveedor).sort().forEach(prov => {
+    porProveedor[prov].sort((a,b)=>a.c.localeCompare(b.c));
 
-    tabla.innerHTML += `
+    porProveedor[prov].forEach(i=>{
+      t.innerHTML+=`
       <tr>
-        <td colspan="5"
-            style="background:linear-gradient(to right,#00416A,#0c6cbd);
-                   color:white;font-size:20px;font-weight:bold;">
-            ${prov}
-        </td>
-      </tr>
-    `;
-
-    porProveedor[prov].sort((a,b)=> a.codigo.localeCompare(b.codigo));
-
-    porProveedor[prov].forEach(p => {
-      tabla.innerHTML += `
-        <tr>
-          <td>${p.codigo}</td>
-          <td>${p.descripcion}</td>
-          <td class="${p.existencia < 0 ? "negativo" : "positivo"}">${p.existencia}</td>
-          <td>$${p.costo.toFixed(2)}</td>
-          <td>$${p.total.toFixed(2)}</td>
-        </tr>
-      `;
+        <td>${i.c}</td>
+        <td>${i.d}</td>
+        <td class="${i.e<0?'negativo':'positivo'}">${i.e}</td>
+        <td>$${i.cost.toFixed(2)}</td>
+        <td>$${i.tot.toFixed(2)}</td>
+      </tr>`;
     });
-
-    tabla.innerHTML += `<tr><td colspan="5" style="height:8px;background:#eaeaea;"></td></tr>`;
   });
 }
 
-// =================================================================
-// EJECUCIÓN
-// =================================================================
+/* ================= INIT ================= */
 await cargarProductos();
-await cargarInventarioBase();
+await cargarBase();
 cargarEntradas();
 cargarSalidas();
-
 </script>
 
 </body>
