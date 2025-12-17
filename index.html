@@ -44,6 +44,14 @@ th{
 <body>
 
 <h2>Inventario Costeado – Almacén Zapata</h2>
+<div id="totalGeneral"
+     style="text-align:right;
+            font-size:20px;
+            font-weight:bold;
+            color:#00416A;
+            margin-bottom:10px;">
+  Total general: $0.00
+</div>
 
 <table>
 <thead>
@@ -181,6 +189,7 @@ function dibujar(){
   t.innerHTML="";
 
   const porProveedor={};
+  let totalGeneral = 0;
 
   Object.keys(productos).forEach(c=>{
     const p=productos[c];
@@ -192,6 +201,7 @@ function dibujar(){
     if(existencia === 0) return;
 
     const total = existencia * p.costo;
+    totalGeneral += total;
 
     if(!porProveedor[p.proveedor]) porProveedor[p.proveedor]=[];
     porProveedor[p.proveedor].push({
@@ -215,10 +225,18 @@ function dibujar(){
         <td>${i.d}</td>
         <td class="${i.e<0?'negativo':'positivo'}">${i.e}</td>
         <td>$${i.cost.toFixed(2)}</td>
-        <td>$${i.tot.toFixed(2)}</td>
+        <td>$${i.tot.toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
       </tr>`;
     });
   });
+
+  // ✅ MOSTRAR TOTAL GENERAL
+  document.getElementById("totalGeneral").textContent =
+    "Total general: $" +
+    totalGeneral.toLocaleString("es-MX",{
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    });
 }
 
 /* ================= INIT ================= */
