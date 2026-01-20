@@ -93,9 +93,12 @@ let okP=false, okA=false, okE=false, okS=false;
 
 /* ================= UTIL ================= */
 function norm(c){
-  return (c||"").toString().trim().padStart(12,"0");
+  return (c ?? "")
+    .toString()
+    .replace(/\D/g, "")     // solo números
+    .slice(-12)             // últimos 12 dígitos
+    .padStart(12,"0");
 }
-
 /* ================= 1. PRODUCTOS ACTIVOS ================= */
 async function cargarProductos(){
   const q = query(collection(db,"productos"), where("activo","==",true));
