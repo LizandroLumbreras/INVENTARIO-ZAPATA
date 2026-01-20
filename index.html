@@ -176,6 +176,36 @@ onSnapshot(collection(db,"almacenes/almacen_zapata/salidas1.0"), s=>{
   okS=true;
   intentar();
 });
+/* ================= CODIGOS POR BULTO ================= */
+const CODIGOS_BULTO = new Set([
+  "000000004660",
+  "000000007702",
+
+  "0000000150100",
+  "0000000150101",
+  "0000000150102",
+  "7501508808318",
+  "7503024644111",
+
+  "7502208804747",
+  "7503009154239",
+  "7503020773860",
+  "7503024644159",
+
+  "0000000142030",
+  "0000000142535",
+  "0000000143050",
+  "0000000144060",
+  "0000000145070",
+  "0000000146090",
+  "0000000147090",
+  "7503024644371",
+
+  "000000020043",
+  "000000020044",
+  "0000000132540",
+  "0000000134060"
+].map(c => c.toString().padStart(12,"0")));
 
 /* ================= DIBUJAR ================= */
 function intentar(){
@@ -200,7 +230,10 @@ function dibujar(){
 
     if(existencia === 0) return;
 
-    const total = existencia * p.costo;
+    const esBulto = CODIGOS_BULTO.has(c);
+const factor = esBulto ? 25 : 1;
+
+const total = existencia * p.costo * factor;
     totalGeneral += total;
 
     if(!porProveedor[p.proveedor]) porProveedor[p.proveedor]=[];
